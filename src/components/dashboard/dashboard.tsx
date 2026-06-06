@@ -13,6 +13,7 @@ import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Separator } from '@/components/ui/separator'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { toast } from 'sonner'
 import {
   StickyNote,
@@ -76,7 +77,9 @@ export function Dashboard() {
   const [isLoading, setIsLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [newNoteTitle, setNewNoteTitle] = useState('')
+  const [newNoteWorkspace, setNewNoteWorkspace] = useState<string>('')
   const [newTodoTitle, setNewTodoTitle] = useState('')
+  const [newTodoWorkspace, setNewTodoWorkspace] = useState<string>('')
   const [newWsTitle, setNewWsTitle] = useState('')
   const [newWsDescription, setNewWsDescription] = useState('')
   const [newWsColor, setNewWsColor] = useState('#059669')
@@ -86,6 +89,9 @@ export function Dashboard() {
   const [inviteEmail, setInviteEmail] = useState('')
   const [isInviting, setIsInviting] = useState(false)
   const [pricingOpen, setPricingOpen] = useState(false)
+  const [quickNoteTitle, setQuickNoteTitle] = useState('')
+  const [quickTodoTitle, setQuickTodoTitle] = useState('')
+  const [isQuickCreating, setIsQuickCreating] = useState(false)
   const { theme, setTheme } = useTheme()
 
   const [decryptedNotes, setDecryptedNotes] = useState<Map<string, { title: string; preview: string }>>(new Map())
@@ -143,13 +149,14 @@ export function Dashboard() {
       const res = await fetch('/api/notes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: encryptedTitle, authorId: currentUser.id }),
+        body: JSON.stringify({ title: encryptedTitle, authorId: currentUser.id, workspaceId: newNoteWorkspace || null }),
       })
       const data = await res.json()
       if (res.ok) {
         addNote(data)
         setDialogOpen(false)
         setNewNoteTitle('')
+        setNewNoteWorkspace('')
         selectNote(data.id)
         toast.success('Note created')
       }
@@ -164,13 +171,14 @@ export function Dashboard() {
       const res = await fetch('/api/todos', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: encryptedTitle, authorId: currentUser.id }),
+        body: JSON.stringify({ title: encryptedTitle, authorId: currentUser.id, workspaceId: newTodoWorkspace || null }),
       })
       const data = await res.json()
       if (res.ok) {
         addTodoList(data)
         setDialogOpen(false)
         setNewTodoTitle('')
+        setNewTodoWorkspace('')
         selectTodo(data.id)
         toast.success('Todo list created')
       }
@@ -205,6 +213,48 @@ export function Dashboard() {
         toast.success('Workspace created')
       }
     } catch { toast.error('Failed to create workspace') }
+  }
+
+  const handleQuickCreateNote = async () => {
+    if (!currentUser || !selectedWs) return
+    const plainTitle = quickNoteTitle.trim() || 'Untitled Note'
+    setIsQuickCreating(true)
+    try {
+      const encryptedTitle = await encryptNoteTitle(plainTitle)
+      const res = await fetch('/api/notes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: encryptedTitle, authorId: currentUser.id, workspaceId: selectedWs.id }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        addNote(data)
+        setQuickNoteTitle('')
+        toast.success('Note added to workspace')
+      }
+    } catch { toast.error('Failed to create note') }
+    finally { setIsQuickCreating(false) }
+  }
+
+  const handleQuickCreateTodo = async () => {
+    if (!currentUser || !selectedWs) return
+    const plainTitle = quickTodoTitle.trim() || 'Untitled Todo List'
+    setIsQuickCreating(true)
+    try {
+      const encryptedTitle = await encryptTodoTitle(plainTitle)
+      const res = await fetch('/api/todos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: encryptedTitle, authorId: currentUser.id, workspaceId: selectedWs.id }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        addTodoList(data)
+        setQuickTodoTitle('')
+        toast.success('Todo list added to workspace')
+      }
+    } catch { toast.error('Failed to create todo list') }
+    finally { setIsQuickCreating(false) }
   }
 
   const handleOpenWsDetail = async (ws: WorkspaceData) => {
@@ -458,6 +508,24 @@ export function Dashboard() {
                         </div>
                         <div className="space-y-2">
                           <Input placeholder="Enter note title..." value={newNoteTitle} onChange={(e) => setNewNoteTitle(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleCreateNote() } }} />
+                          {workspaces.length > 0 && (
+                            <Select value={newNoteWorkspace} onValueChange={(v) => setNewNoteWorkspace(v === '__none__' ? '' : v)}>
+                              <SelectTrigger className="w-full h-9 text-xs rounded-lg">
+                                <SelectValue placeholder="Assign to workspace (optional)" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="__none__">No workspace</SelectItem>
+                                {workspaces.map((ws) => (
+                                  <SelectItem key={ws.id} value={ws.id}>
+                                    <span className="flex items-center gap-1.5">
+                                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: ws.color }} />
+                                      {ws.title}
+                                    </span>
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          )}
                           <Button size="sm" className="w-full bg-gradient-to-r from-[#059669] to-[#0d9488] text-white rounded-lg" onClick={handleCreateNote}>Create Note</Button>
                         </div>
                       </div>
@@ -471,6 +539,24 @@ export function Dashboard() {
                         </div>
                         <div className="space-y-2">
                           <Input placeholder="Enter todo list title..." value={newTodoTitle} onChange={(e) => setNewTodoTitle(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleCreateTodo() } }} />
+                          {workspaces.length > 0 && (
+                            <Select value={newTodoWorkspace} onValueChange={(v) => setNewTodoWorkspace(v === '__none__' ? '' : v)}>
+                              <SelectTrigger className="w-full h-9 text-xs rounded-lg">
+                                <SelectValue placeholder="Assign to workspace (optional)" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="__none__">No workspace</SelectItem>
+                                {workspaces.map((ws) => (
+                                  <SelectItem key={ws.id} value={ws.id}>
+                                    <span className="flex items-center gap-1.5">
+                                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: ws.color }} />
+                                      {ws.title}
+                                    </span>
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          )}
                           <Button size="sm" className="w-full bg-gradient-to-r from-[#d97706] to-[#f59e0b] text-white rounded-lg" onClick={handleCreateTodo}>Create Todo List</Button>
                         </div>
                       </div>
@@ -740,6 +826,46 @@ export function Dashboard() {
               <div className="flex items-center text-xs text-muted-foreground gap-2">
                 <Clock className="w-3 h-3" />
                 Created {formatDistanceToNow(new Date(selectedWs.createdAt), { addSuffix: true })}
+              </div>
+              {/* Quick Create */}
+              <div className="space-y-2">
+                <Label className="text-xs font-medium flex items-center gap-1.5">
+                  <Plus className="w-3 h-3" /> Quick Add
+                </Label>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="rounded-lg border border-border/40 bg-card/30 p-2.5 space-y-2">
+                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <FileText className="w-3 h-3 text-[#059669]" />
+                      <span>New Note</span>
+                    </div>
+                    <Input
+                      placeholder="Note title..."
+                      value={quickNoteTitle}
+                      onChange={(e) => setQuickNoteTitle(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleQuickCreateNote() } }}
+                      className="h-8 text-xs rounded-md"
+                    />
+                    <Button size="sm" className="w-full h-7 text-[11px] bg-gradient-to-r from-[#059669] to-[#0d9488] text-white rounded-md" onClick={handleQuickCreateNote} disabled={isQuickCreating}>
+                      {isQuickCreating ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3 mr-0.5" />} Add
+                    </Button>
+                  </div>
+                  <div className="rounded-lg border border-border/40 bg-card/30 p-2.5 space-y-2">
+                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <CheckSquare className="w-3 h-3 text-[#d97706]" />
+                      <span>New Todo</span>
+                    </div>
+                    <Input
+                      placeholder="Todo title..."
+                      value={quickTodoTitle}
+                      onChange={(e) => setQuickTodoTitle(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleQuickCreateTodo() } }}
+                      className="h-8 text-xs rounded-md"
+                    />
+                    <Button size="sm" className="w-full h-7 text-[11px] bg-gradient-to-r from-[#d97706] to-[#f59e0b] text-white rounded-md" onClick={handleQuickCreateTodo} disabled={isQuickCreating}>
+                      {isQuickCreating ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3 mr-0.5" />} Add
+                    </Button>
+                  </div>
+                </div>
               </div>
               {/* Invite */}
               <div className="space-y-2">
