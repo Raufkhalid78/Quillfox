@@ -31,6 +31,7 @@ export async function POST(req: NextRequest) {
         email: user.email,
         name: user.name,
         image: user.image,
+        salt: user.salt,
       },
     })
   } catch (error) {

@@ -4,7 +4,7 @@ import bcrypt from 'bcryptjs'
 
 export async function POST(req: NextRequest) {
   try {
-    const { name, email, password } = await req.json()
+    const { name, email, password, salt } = await req.json()
 
     if (!email || !password) {
       return NextResponse.json({ error: 'Email and password are required' }, { status: 400 })
@@ -22,12 +22,13 @@ export async function POST(req: NextRequest) {
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 12)
 
-    // Create user
+    // Create user with E2E encryption salt
     const user = await db.user.create({
       data: {
         name: name || null,
         email: email.toLowerCase(),
         password: hashedPassword,
+        salt: salt || null,
       },
     })
 
@@ -36,6 +37,7 @@ export async function POST(req: NextRequest) {
         id: user.id,
         email: user.email,
         name: user.name,
+        salt: user.salt,
       },
     })
   } catch (error) {

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAppStore } from '@/stores/app-store'
+import { decryptNoteContent, decryptNoteTitle, decryptTodoTitle, encryptNoteTitle, encryptTodoTitle } from '@/lib/encrypted-api'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -10,6 +11,7 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { toast } from 'sonner'
 import {
   StickyNote,
@@ -25,6 +27,8 @@ import {
   ListTodo,
   Users,
   Sparkles,
+  ShieldCheck,
+  ShieldAlert,
 } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { formatDistanceToNow } from 'date-fns'
@@ -43,12 +47,17 @@ export function Dashboard() {
   const setNotes = useAppStore((s) => s.setNotes)
   const setTodoListsAction = useAppStore((s) => s.setTodoLists)
   const setWorkspacesAction = useAppStore((s) => s.setWorkspaces)
+  const isEncryptedSession = useAppStore((s) => s.isEncryptedSession)
 
   const [isLoading, setIsLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [newNoteTitle, setNewNoteTitle] = useState('')
   const [newTodoTitle, setNewTodoTitle] = useState('')
   const { theme, setTheme } = useTheme()
+
+  // Decrypted preview data
+  const [decryptedNotes, setDecryptedNotes] = useState<Map<string, { title: string; preview: string }>>(new Map())
+  const [decryptedTodos, setDecryptedTodos] = useState<Map<string, string>>(new Map())
 
   const fetchData = async () => {
     if (!currentUser) return
@@ -82,14 +91,44 @@ export function Dashboard() {
     fetchData()
   }, [currentUser, setNotes, setTodoListsAction, setWorkspacesAction])
 
+  // Decrypt previews for notes and todos
+  useEffect(() => {
+    const decryptData = async () => {
+      const noteMap = new Map<string, { title: string; preview: string }>()
+      const todoMap = new Map<string, string>()
+
+      await Promise.all(
+        notes.map(async (n) => {
+          const title = await decryptNoteTitle(n.title)
+          const preview = await decryptNoteContent(n.content.substring(0, 120))
+          noteMap.set(n.id, { title, preview: preview || 'Empty note...' })
+        })
+      )
+
+      await Promise.all(
+        todoLists.map(async (t) => {
+          const title = await decryptNoteTitle(t.title)
+          todoMap.set(t.id, title)
+        })
+      )
+
+      setDecryptedNotes(noteMap)
+      setDecryptedTodos(todoMap)
+    }
+    if (!isLoading) {
+      decryptData()
+    }
+  }, [notes, todoLists, isLoading])
+
   const handleCreateNote = async () => {
     if (!currentUser) return
-    const title = newNoteTitle.trim() || 'Untitled Note'
+    const plainTitle = newNoteTitle.trim() || 'Untitled Note'
     try {
+      const encryptedTitle = await encryptNoteTitle(plainTitle)
       const res = await fetch('/api/notes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, authorId: currentUser.id }),
+        body: JSON.stringify({ title: encryptedTitle, authorId: currentUser.id }),
       })
       const data = await res.json()
       if (res.ok) {
@@ -106,12 +145,13 @@ export function Dashboard() {
 
   const handleCreateTodo = async () => {
     if (!currentUser) return
-    const title = newTodoTitle.trim() || 'Untitled Todo List'
+    const plainTitle = newTodoTitle.trim() || 'Untitled Todo List'
     try {
+      const encryptedTitle = await encryptTodoTitle(plainTitle)
       const res = await fetch('/api/todos', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, authorId: currentUser.id }),
+        body: JSON.stringify({ title: encryptedTitle, authorId: currentUser.id }),
       })
       const data = await res.json()
       if (res.ok) {
@@ -160,7 +200,28 @@ export function Dashboard() {
             <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center">
               <StickyNote className="w-5 h-5" />
             </div>
-            <h1 className="text-xl font-bold tracking-tight">Notely</h1>
+            <h1 className="text-xl font-bold tracking-tight">QuillFox</h1>
+            {/* Encryption status badge */}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  {isEncryptedSession ? (
+                    <Badge variant="secondary" className="gap-1 text-emerald-700 bg-emerald-50 border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-800 dark:text-emerald-400">
+                      <ShieldCheck className="w-3 h-3" />
+                      <span className="hidden sm:inline">E2E</span>
+                    </Badge>
+                  ) : (
+                    <Badge variant="secondary" className="gap-1 text-amber-700 bg-amber-50 border-amber-200 dark:bg-amber-950/30 dark:border-amber-800 dark:text-amber-400">
+                      <ShieldAlert className="w-3 h-3" />
+                      <span className="hidden sm:inline">No E2E</span>
+                    </Badge>
+                  )}
+                </TooltipTrigger>
+                <TooltipContent>
+                  {isEncryptedSession ? 'End-to-end encryption active' : 'Encryption not set up'}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
 
           <div className="flex items-center gap-2">
@@ -282,32 +343,42 @@ export function Dashboard() {
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   <AnimatePresence>
-                    {recentNotes.map((note, index) => (
-                      <motion.div
-                        key={note.id}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: index * 0.05 }}
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 0.98 }}
-                        onClick={() => selectNote(note.id)}
-                      >
-                        <Card className="cursor-pointer border-border/50 hover:shadow-md transition-shadow h-full">
-                          <CardHeader className="pb-2">
-                            <CardTitle className="text-base line-clamp-1">{note.title}</CardTitle>
-                          </CardHeader>
-                          <CardContent className="pb-3">
-                            <p className="text-sm text-muted-foreground line-clamp-2 mb-3">
-                              {note.content.substring(0, 120) || 'Empty note...'}
-                            </p>
-                            <div className="flex items-center text-xs text-muted-foreground">
-                              <Clock className="w-3 h-3 mr-1" />
-                              {formatDistanceToNow(new Date(note.updatedAt), { addSuffix: true })}
-                            </div>
-                          </CardContent>
-                        </Card>
-                      </motion.div>
-                    ))}
+                    {recentNotes.map((note, index) => {
+                      const decrypted = decryptedNotes.get(note.id)
+                      return (
+                        <motion.div
+                          key={note.id}
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: index * 0.05 }}
+                          whileHover={{ scale: 1.02 }}
+                          whileTap={{ scale: 0.98 }}
+                          onClick={() => selectNote(note.id)}
+                        >
+                          <Card className="cursor-pointer border-border/50 hover:shadow-md transition-shadow h-full">
+                            <CardHeader className="pb-2">
+                              <div className="flex items-center justify-between">
+                                <CardTitle className="text-base line-clamp-1">
+                                  {decrypted?.title || note.title}
+                                </CardTitle>
+                                {isEncryptedSession && (
+                                  <ShieldCheck className="w-3 h-3 text-emerald-500 shrink-0" />
+                                )}
+                              </div>
+                            </CardHeader>
+                            <CardContent className="pb-3">
+                              <p className="text-sm text-muted-foreground line-clamp-2 mb-3">
+                                {decrypted?.preview || 'Empty note...'}
+                              </p>
+                              <div className="flex items-center text-xs text-muted-foreground">
+                                <Clock className="w-3 h-3 mr-1" />
+                                {formatDistanceToNow(new Date(note.updatedAt), { addSuffix: true })}
+                              </div>
+                            </CardContent>
+                          </Card>
+                        </motion.div>
+                      )
+                    })}
                   </AnimatePresence>
                 </div>
               )}
@@ -338,6 +409,7 @@ export function Dashboard() {
                       const completed = todo.items.filter((i) => i.completed).length
                       const total = todo.items.length
                       const progress = total > 0 ? (completed / total) * 100 : 0
+                      const decryptedTitle = decryptedTodos.get(todo.id) || todo.title
                       return (
                         <motion.div
                           key={todo.id}
@@ -350,7 +422,12 @@ export function Dashboard() {
                         >
                           <Card className="cursor-pointer border-border/50 hover:shadow-md transition-shadow h-full">
                             <CardHeader className="pb-2">
-                              <CardTitle className="text-base line-clamp-1">{todo.title}</CardTitle>
+                              <div className="flex items-center justify-between">
+                                <CardTitle className="text-base line-clamp-1">{decryptedTitle}</CardTitle>
+                                {isEncryptedSession && (
+                                  <ShieldCheck className="w-3 h-3 text-emerald-500 shrink-0" />
+                                )}
+                              </div>
                             </CardHeader>
                             <CardContent className="pb-3">
                               <div className="flex items-center justify-between text-sm mb-2">

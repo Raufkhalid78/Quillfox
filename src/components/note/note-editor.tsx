@@ -3,12 +3,14 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { motion } from 'framer-motion'
 import { useAppStore } from '@/stores/app-store'
+import { encryptNoteContent, encryptNoteTitle, decryptNoteContent, decryptNoteTitle } from '@/lib/encrypted-api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Separator } from '@/components/ui/separator'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { toast } from 'sonner'
-import { ArrowLeft, Lock, Loader2 } from 'lucide-react'
+import { ArrowLeft, Lock, Loader2, ShieldCheck, ShieldAlert } from 'lucide-react'
 
 // Lazy-loaded MDX Editor
 function LazyEditor({ content, onChange, isLocked }: { content: string; onChange: (val: string) => void; isLocked: boolean }) {
@@ -60,6 +62,7 @@ export function NoteEditor() {
   const isLocked = useAppStore((s) => s.isLocked)
   const lockedByUser = useAppStore((s) => s.lockedByUser)
   const setView = useAppStore((s) => s.setView)
+  const isEncryptedSession = useAppStore((s) => s.isEncryptedSession)
 
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
@@ -69,7 +72,7 @@ export function NoteEditor() {
 
   const note = notes.find((n) => n.id === selectedNoteId)
 
-  // Load note data
+  // Load note data & decrypt
   useEffect(() => {
     if (!selectedNoteId) return
     setInitialLoad(true)
@@ -78,8 +81,11 @@ export function NoteEditor() {
         const res = await fetch(`/api/notes/${selectedNoteId}`)
         if (res.ok) {
           const data = await res.json()
-          setTitle(data.title)
-          setContent(data.content || '')
+          // Decrypt title and content if encrypted
+          const decryptedTitle = await decryptNoteTitle(data.title)
+          const decryptedContent = await decryptNoteContent(data.content || '')
+          setTitle(decryptedTitle)
+          setContent(decryptedContent)
           setInitialLoad(false)
         } else {
           toast.error('Failed to load note')
@@ -93,21 +99,24 @@ export function NoteEditor() {
     loadNote()
   }, [selectedNoteId, setView])
 
-  // Auto-save debounced
+  // Auto-save debounced (with encryption)
   const saveContent = useCallback(async () => {
     if (!selectedNoteId || isSaving) return
     setIsSaving(true)
     try {
+      // Encrypt before sending to server
+      const encryptedTitle = await encryptNoteTitle(title)
+      const encryptedContent = await encryptNoteContent(content)
       const res = await fetch(`/api/notes/${selectedNoteId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, content }),
+        body: JSON.stringify({ title: encryptedTitle, content: encryptedContent }),
       })
       if (!res.ok) {
         toast.error('Failed to save')
       } else {
-        updateNoteContent(selectedNoteId, content)
-        updateNoteTitle(selectedNoteId, title)
+        updateNoteContent(selectedNoteId, encryptedContent)
+        updateNoteTitle(selectedNoteId, encryptedTitle)
       }
     } catch {
       toast.error('Network error')
@@ -193,6 +202,22 @@ export function NoteEditor() {
           />
 
           <div className="flex items-center gap-2 shrink-0">
+            {/* Encryption indicator */}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  {isEncryptedSession ? (
+                    <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                  ) : (
+                    <ShieldAlert className="w-4 h-4 text-amber-500" />
+                  )}
+                </TooltipTrigger>
+                <TooltipContent>
+                  {isEncryptedSession ? 'End-to-end encrypted' : 'Encryption not active'}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+
             {isSaving && (
               <motion.div
                 initial={{ opacity: 0 }}

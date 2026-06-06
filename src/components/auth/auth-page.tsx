@@ -3,13 +3,14 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { useAppStore } from '@/stores/app-store'
+import { deriveKey, generateSalt } from '@/lib/e2ee'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from 'sonner'
-import { StickyNote, Loader2 } from 'lucide-react'
+import { StickyNote, Loader2, ShieldCheck } from 'lucide-react'
 
 export function AuthPage() {
   const [activeTab, setActiveTab] = useState<'login' | 'register'>('login')
@@ -20,6 +21,7 @@ export function AuthPage() {
   const [registerEmail, setRegisterEmail] = useState('')
   const [registerPassword, setRegisterPassword] = useState('')
   const login = useAppStore((s) => s.login)
+  const setEncryptionKey = useAppStore((s) => s.setEncryptionKey)
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -40,6 +42,18 @@ export function AuthPage() {
         return
       }
       login({ id: data.user.id, email: data.user.email, name: data.user.name })
+
+      // Derive encryption key from password + salt
+      if (data.user.salt) {
+        try {
+          const saltArray = Uint8Array.from(atob(data.user.salt), (c) => c.charCodeAt(0))
+          const key = await deriveKey(loginPassword, saltArray)
+          setEncryptionKey(key, data.user.salt)
+        } catch {
+          toast.error('Failed to setup encryption. Your data may not be decrypted.')
+        }
+      }
+
       toast.success('Welcome back!')
     } catch {
       toast.error('Network error. Please try again.')
@@ -60,6 +74,10 @@ export function AuthPage() {
     }
     setIsLoading(true)
     try {
+      // Generate encryption salt client-side
+      const salt = generateSalt()
+      const saltBase64 = btoa(String.fromCharCode(...salt))
+
       const res = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -67,6 +85,7 @@ export function AuthPage() {
           name: registerName.trim(),
           email: registerEmail.trim(),
           password: registerPassword,
+          salt: saltBase64,
         }),
       })
       const data = await res.json()
@@ -75,6 +94,15 @@ export function AuthPage() {
         return
       }
       login({ id: data.user.id, email: data.user.email, name: data.user.name })
+
+      // Derive encryption key from password + salt
+      try {
+        const key = await deriveKey(registerPassword, salt)
+        setEncryptionKey(key, saltBase64)
+      } catch {
+        toast.error('Failed to setup encryption.')
+      }
+
       toast.success('Account created successfully!')
     } catch {
       toast.error('Network error. Please try again.')
@@ -96,8 +124,8 @@ export function AuthPage() {
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-emerald-600 text-white mb-4">
             <StickyNote className="w-8 h-8" />
           </div>
-          <h1 className="text-3xl font-bold tracking-tight">Notely</h1>
-          <p className="text-muted-foreground mt-1">Your productivity workspace</p>
+          <h1 className="text-3xl font-bold tracking-tight">QuillFox</h1>
+          <p className="text-muted-foreground mt-1">Your encrypted workspace</p>
         </div>
 
         {/* Auth Card */}
@@ -136,6 +164,10 @@ export function AuthPage() {
                       onChange={(e) => setLoginPassword(e.target.value)}
                       disabled={isLoading}
                     />
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-emerald-600 bg-emerald-50 dark:bg-emerald-950/20 p-2 rounded-lg">
+                    <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+                    <span>Your password derives your encryption key. Never share it.</span>
                   </div>
                   <Button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-700" disabled={isLoading}>
                     {isLoading ? (
@@ -184,6 +216,10 @@ export function AuthPage() {
                       onChange={(e) => setRegisterPassword(e.target.value)}
                       disabled={isLoading}
                     />
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-emerald-600 bg-emerald-50 dark:bg-emerald-950/20 p-2 rounded-lg">
+                    <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+                    <span>End-to-end encryption enabled. Your password secures your data.</span>
                   </div>
                   <Button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-700" disabled={isLoading}>
                     {isLoading ? (

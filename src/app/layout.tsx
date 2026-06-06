@@ -14,16 +14,16 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Notely - Your Productivity Workspace",
-  description: "A comprehensive productivity workspace combining rich-text notetaking and structured to-do lists with real-time collaboration.",
-  keywords: ["Notely", "productivity", "notes", "todo", "collaboration", "workspace"],
-  authors: [{ name: "Notely Team" }],
+  title: "QuillFox - Your Encrypted Workspace",
+  description: "A comprehensive encrypted productivity workspace combining rich-text notetaking and structured to-do lists with end-to-end encryption.",
+  keywords: ["QuillFox", "productivity", "notes", "todo", "encryption", "workspace"],
+  authors: [{ name: "QuillFox Team" }],
   icons: {
     icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
   },
   openGraph: {
-    title: "Notely - Your Productivity Workspace",
-    description: "Rich-text notes and structured todos with real-time collaboration.",
+    title: "QuillFox - Your Encrypted Workspace",
+    description: "End-to-end encrypted rich-text notes and structured todos.",
     type: "website",
   },
 };

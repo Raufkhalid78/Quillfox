@@ -3,12 +3,14 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAppStore } from '@/stores/app-store'
+import { encryptTodoTitle, decryptTodoTitle, decryptNoteTitle } from '@/lib/encrypted-api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Separator } from '@/components/ui/separator'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { toast } from 'sonner'
-import { ArrowLeft, Plus, Trash2, GripVertical, Loader2, Lock } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, GripVertical, Loader2, Lock, ShieldCheck, ShieldAlert } from 'lucide-react'
 
 export function TodoList() {
   const currentUser = useAppStore((s) => s.currentUser)
@@ -19,6 +21,7 @@ export function TodoList() {
   const isLocked = useAppStore((s) => s.isLocked)
   const lockedByUser = useAppStore((s) => s.lockedByUser)
   const setView = useAppStore((s) => s.setView)
+  const isEncryptedSession = useAppStore((s) => s.isEncryptedSession)
 
   const [title, setTitle] = useState('')
   const [items, setItems] = useState<Array<{
@@ -38,7 +41,7 @@ export function TodoList() {
 
   const todoList = todoLists.find((t) => t.id === selectedTodoListId)
 
-  // Load todo list data
+  // Load todo list data & decrypt
   useEffect(() => {
     if (!selectedTodoListId) return
     const loadTodoList = async () => {
@@ -46,8 +49,18 @@ export function TodoList() {
         const res = await fetch(`/api/todos/${selectedTodoListId}`)
         if (res.ok) {
           const data = await res.json()
-          setTitle(data.title)
-          setItems(data.items.sort((a: any, b: any) => a.order - b.order))
+          // Decrypt title and item titles
+          const decryptedTitle = await decryptNoteTitle(data.title)
+          const decryptedItems = await Promise.all(
+            data.items
+              .sort((a: any, b: any) => a.order - b.order)
+              .map(async (item: any) => ({
+                ...item,
+                title: await decryptTodoTitle(item.title),
+              }))
+          )
+          setTitle(decryptedTitle)
+          setItems(decryptedItems)
           setInitialLoad(false)
         } else {
           toast.error('Failed to load todo list')
@@ -66,18 +79,25 @@ export function TodoList() {
   const totalCount = items.length
   const progress = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0
 
-  // Save items to API (uses ref to avoid stale closures)
+  // Save items to API (with encryption, uses ref to avoid stale closures)
   const saveItemsFn = useCallback(async (itemsToSave: typeof items) => {
     if (!selectedTodoListId) return
     setIsSaving(true)
     try {
+      // Encrypt all item titles before saving
+      const encryptedItems = await Promise.all(
+        itemsToSave.map(async (item) => ({
+          ...item,
+          title: await encryptTodoTitle(item.title),
+        }))
+      )
       const res = await fetch(`/api/todos/${selectedTodoListId}/items`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: itemsToSave }),
+        body: JSON.stringify({ items: encryptedItems }),
       })
       if (res.ok) {
-        updateTodoListItems(selectedTodoListId, itemsToSave)
+        updateTodoListItems(selectedTodoListId, encryptedItems)
       } else {
         toast.error('Failed to save')
       }
@@ -109,17 +129,20 @@ export function TodoList() {
   const handleAddItem = async () => {
     if (!newItemText.trim() || isLocked || !selectedTodoListId) return
     try {
+      // Encrypt title before sending
+      const encryptedTitle = await encryptTodoTitle(newItemText.trim())
       const res = await fetch(`/api/todos/${selectedTodoListId}/items`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          title: newItemText.trim(),
+          title: encryptedTitle,
           order: items.length,
         }),
       })
       if (res.ok) {
         const newItem = await res.json()
-        setItems((prev) => [...prev, newItem])
+        // Store plaintext version locally, but keep encrypted for cache sync
+        setItems((prev) => [...prev, { ...newItem, title: newItemText.trim() }])
         setNewItemText('')
       }
     } catch {
@@ -173,7 +196,7 @@ export function TodoList() {
     setDraggedId(null)
   }
 
-  // Save title
+  // Save title (with encryption)
   const handleTitleChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const newTitle = e.target.value
@@ -182,12 +205,13 @@ export function TodoList() {
       saveTimeoutRef.current = setTimeout(async () => {
         if (!selectedTodoListId) return
         try {
+          const encryptedTitle = await encryptTodoTitle(newTitle)
           await fetch(`/api/todos/${selectedTodoListId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ title: newTitle }),
+            body: JSON.stringify({ title: encryptedTitle }),
           })
-          updateTodoListTitle(selectedTodoListId, newTitle)
+          updateTodoListTitle(selectedTodoListId, encryptedTitle)
         } catch {
           toast.error('Failed to save title')
         }
@@ -241,6 +265,22 @@ export function TodoList() {
           />
 
           <div className="flex items-center gap-2 shrink-0">
+            {/* Encryption indicator */}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  {isEncryptedSession ? (
+                    <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                  ) : (
+                    <ShieldAlert className="w-4 h-4 text-amber-500" />
+                  )}
+                </TooltipTrigger>
+                <TooltipContent>
+                  {isEncryptedSession ? 'End-to-end encrypted' : 'Encryption not active'}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+
             {isSaving && (
               <motion.div
                 initial={{ opacity: 0 }}

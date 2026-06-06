@@ -80,11 +80,17 @@ interface AppState {
   notes: NoteItem[]
   todoLists: TodoItemData[]
   workspaces: WorkspaceData[]
+  // E2E Encryption (CryptoKey NOT persisted, excluded via partialize)
+  encryptionKey: CryptoKey | null
+  encryptionSalt: string | null
+  isEncryptedSession: boolean
 
   // Actions
   setView: (view: AppView) => void
   login: (user: User) => void
   logout: () => void
+  setEncryptionKey: (key: CryptoKey, salt: string) => void
+  clearEncryption: () => void
   selectNote: (noteId: string | null) => void
   selectTodo: (todoListId: string | null) => void
   setActiveCollaborators: (collaborators: Collaborator[]) => void
@@ -117,6 +123,10 @@ export const useAppStore = create<AppState>()(
       notes: [],
       todoLists: [],
       workspaces: [],
+      // E2E encryption state
+      encryptionKey: null,
+      encryptionSalt: null,
+      isEncryptedSession: false,
 
       // Actions
       setView: (view) => set({ currentView: view }),
@@ -136,7 +146,16 @@ export const useAppStore = create<AppState>()(
           notes: [],
           todoLists: [],
           workspaces: [],
+          encryptionKey: null,
+          encryptionSalt: null,
+          isEncryptedSession: false,
         }),
+
+      setEncryptionKey: (key, salt) =>
+        set({ encryptionKey: key, encryptionSalt: salt, isEncryptedSession: true }),
+
+      clearEncryption: () =>
+        set({ encryptionKey: null, encryptionSalt: null, isEncryptedSession: false }),
 
       selectNote: (noteId) =>
         set({
@@ -214,10 +233,11 @@ export const useAppStore = create<AppState>()(
         })),
     }),
     {
-      name: 'notely-app-storage',
+      name: 'quillfox-app-storage',
       partialize: (state) => ({
         currentUser: state.currentUser,
         currentView: state.currentView === 'auth' ? 'auth' : state.currentView,
+        encryptionSalt: state.encryptionSalt,
       }),
     }
   )

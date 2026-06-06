@@ -84,3 +84,37 @@ Built "Notely", a comprehensive productivity workspace web application combining
 2. **MDXEditor CSS import** - Added `@mdxeditor/editor/style.css` to layout.tsx
 3. **Todo items stale closure** - Fixed debounce save using `useRef` for items to avoid stale closures in timeouts
 4. **Unused imports cleanup** - Removed unused Save, Lock, Users, Badge imports from note editor; unused type imports from dashboard
+
+---
+Task ID: rebrand-e2ee
+Agent: main
+Task: Rebrand "Notely" to "QuillFox" and implement End-to-End Encryption
+
+Work Log:
+- Rebranded all "Notely" references to "QuillFox" across layout.tsx, page.tsx, auth-page.tsx, dashboard.tsx, and app-store.ts
+- Updated metadata, descriptions, keywords, and footer text
+- Changed localStorage key from 'notely-app-storage' to 'quillfox-app-storage'
+- Added `salt` field (String?) to User model in Prisma schema
+- Ran `bun run db:push` to apply schema migration
+- Created `src/lib/e2ee.ts` - Client-side E2E encryption utility using Web Crypto API (PBKDF2 + AES-GCM-256)
+- Updated `src/stores/app-store.ts` with encryption state (encryptionKey, encryptionSalt, isEncryptedSession) and actions (setEncryptionKey, clearEncryption), excluded CryptoKey from persist via partialize
+- Updated register API to accept and store `salt` field
+- Updated login API to return `salt` field in response
+- Created `src/lib/encrypted-api.ts` - Wrapper functions for encrypting/decrypting note content, note titles, and todo titles
+- Updated auth-page.tsx to derive encryption key on login/register using password + salt, with ShieldCheck badges explaining E2E
+- Updated note-editor.tsx to decrypt content/title on load and encrypt before save, added ShieldCheck/ShieldAlert encryption indicator
+- Updated todo-list.tsx to decrypt item titles on load and encrypt before save, with encryption indicator
+- Updated dashboard.tsx to decrypt note previews and todo titles in useEffect, added E2E badge in header and per-card encryption indicators
+- Added Tooltip components with encryption status messages throughout
+- Ran `bun run lint` - 0 errors, 0 warnings
+- Dev server compiles successfully with no errors
+
+Stage Summary:
+- Full rebrand from "Notely" to "QuillFox" completed across 5 files
+- End-to-end encryption implemented using PBKDF2 (100k iterations) + AES-GCM-256
+- All note content and todo item titles are encrypted client-side before storage
+- Server never sees plaintext content - only stores encrypted base64 strings
+- Encryption key derived from user password, never sent to server
+- Salt stored server-side (not secret) for key re-derivation on login
+- Green shield icon shown when encryption is active, amber warning when not
+- Backward compatible: existing unencrypted data still works via isEncrypted() check

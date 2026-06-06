@@ -20,7 +20,7 @@ function AppContent() {
         {currentView === 'todo-list' && <TodoList />}
       </main>
       <footer className="mt-auto py-4 text-center text-sm text-muted-foreground border-t border-border">
-        © 2025 Notely. Built with ❤️
+        © 2025 QuillFox. Built with ❤️
       </footer>
     </div>
   )
