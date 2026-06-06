@@ -11,6 +11,16 @@ import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogCancel,
+  AlertDialogAction,
+} from '@/components/ui/alert-dialog'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { toast } from 'sonner'
 import {
@@ -47,6 +57,8 @@ export function WorkspacesView() {
   const setWorkspacesAction = useAppStore((s) => s.setWorkspaces)
   const addNote = useAppStore((s) => s.addNote)
   const addTodoList = useAppStore((s) => s.addTodoList)
+  const setNotes = useAppStore((s) => s.setNotes)
+  const setTodoLists = useAppStore((s) => s.setTodoLists)
   const selectNote = useAppStore((s) => s.selectNote)
   const selectTodo = useAppStore((s) => s.selectTodo)
   const setView = useAppStore((s) => s.setView)
@@ -67,6 +79,7 @@ export function WorkspacesView() {
   const [quickNoteTitle, setQuickNoteTitle] = useState('')
   const [quickTodoTitle, setQuickTodoTitle] = useState('')
   const [isQuickCreating, setIsQuickCreating] = useState(false)
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
 
   const { theme, setTheme } = useTheme()
 
@@ -167,10 +180,15 @@ export function WorkspacesView() {
     try {
       const res = await fetch(`/api/workspaces/${selectedWs.id}`, { method: 'DELETE' })
       if (res.ok) {
+        // Remove workspace from store
         setWorkspacesAction(workspaces.filter((w) => w.id !== selectedWs.id))
+        // Cascade delete: remove all notes and todos belonging to this workspace
+        setNotes(notes.filter((n) => n.workspaceId !== selectedWs.id))
+        setTodoLists(todoLists.filter((t) => t.workspaceId !== selectedWs.id))
         setWsDetailOpen(false)
+        setDeleteConfirmOpen(false)
         setSelectedWs(null)
-        toast.success('Workspace deleted')
+        toast.success('Workspace and all its notes & todos deleted')
       }
     } catch { toast.error('Failed to delete workspace') }
   }
@@ -503,7 +521,7 @@ export function WorkspacesView() {
               <Button
                 variant="ghost"
                 className="w-full text-destructive hover:text-destructive hover:bg-destructive/10 rounded-xl h-9 text-xs gap-1.5"
-                onClick={handleDeleteWorkspace}
+                onClick={() => setDeleteConfirmOpen(true)}
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 Delete Workspace
@@ -512,6 +530,27 @@ export function WorkspacesView() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete &ldquo;{selectedWs?.title}&rdquo;?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete this workspace and <strong>all its notes and todo lists</strong>. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-white hover:bg-destructive/90"
+              onClick={handleDeleteWorkspace}
+            >
+              Delete Everything
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

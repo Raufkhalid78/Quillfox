@@ -61,3 +61,25 @@ Implemented a shared `AppSidebar` component and added three new full-page views 
 ### 9. Page Routing (`src/app/page.tsx`)
 - Added imports for `NotesList`, `TodosList`, `WorkspacesView`
 - Added `AnimatePresence` entries for `'notes'`, `'todos'`, `'workspaces'` views
+
+---
+Task ID: 1
+Agent: Main Agent
+Task: Fix workspace deletion to cascade delete associated notes and todos
+
+Work Log:
+- Read Prisma schema and identified `onDelete: SetNull` on Note→Workspace and TodoList→Workspace relations
+- Changed both relations to `onDelete: Cascade` in `prisma/schema.prisma`
+- Ran `bun run db:push` to apply schema changes to SQLite database
+- Updated `workspaces-view.tsx` `handleDeleteWorkspace` to also remove associated notes and todos from Zustand store on deletion
+- Added `setNotes` and `setTodoLists` selectors from store to the component
+- Added AlertDialog confirmation dialog before cascade deletion (warns user about permanent deletion of all notes & todos)
+- Added `deleteConfirmOpen` state variable
+- Ran lint — all clean
+- Browser-verified the full flow: workspaces page → workspace detail → delete button → confirmation dialog with cascade warning
+
+Stage Summary:
+- Prisma schema now cascades deletes: deleting a workspace automatically deletes all its notes, todo lists, todo items, note versions, and document locks
+- Frontend Zustand store also removes associated notes/todos when workspace is deleted
+- Added user-facing confirmation dialog to prevent accidental destructive cascade deletes
+- All verification passed via agent-browser (no console errors, all UI elements rendering correctly)
