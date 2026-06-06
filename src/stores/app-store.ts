@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
-export type AppView = 'auth' | 'dashboard' | 'note-editor' | 'todo-list'
+export type AppView = 'auth' | 'dashboard' | 'note-editor' | 'todo-list' | 'notes' | 'todos' | 'workspaces'
 
 export interface User {
   id: string
@@ -72,6 +72,7 @@ interface AppState {
   // Selection
   selectedNoteId: string | null
   selectedTodoListId: string | null
+  selectedWorkspaceId: string | null
   // Collaboration
   activeCollaborators: Collaborator[]
   isLocked: boolean
@@ -93,6 +94,7 @@ interface AppState {
   clearEncryption: () => void
   selectNote: (noteId: string | null) => void
   selectTodo: (todoListId: string | null) => void
+  setSelectedWorkspaceId: (id: string | null) => void
   setActiveCollaborators: (collaborators: Collaborator[]) => void
   setLock: (isLocked: boolean, lockedByUser: string | null) => void
   setNotes: (notes: NoteItem[]) => void
@@ -117,6 +119,7 @@ export const useAppStore = create<AppState>()(
       currentUser: null,
       selectedNoteId: null,
       selectedTodoListId: null,
+      selectedWorkspaceId: null,
       activeCollaborators: [],
       isLocked: false,
       lockedByUser: null,
@@ -140,6 +143,7 @@ export const useAppStore = create<AppState>()(
           currentView: 'auth',
           selectedNoteId: null,
           selectedTodoListId: null,
+          selectedWorkspaceId: null,
           activeCollaborators: [],
           isLocked: false,
           lockedByUser: null,
@@ -160,14 +164,17 @@ export const useAppStore = create<AppState>()(
       selectNote: (noteId) =>
         set({
           selectedNoteId: noteId,
-          currentView: noteId ? 'note-editor' : 'dashboard',
+          currentView: noteId ? 'note-editor' : 'notes',
         }),
 
       selectTodo: (todoListId) =>
         set({
           selectedTodoListId: todoListId,
-          currentView: todoListId ? 'todo-list' : 'dashboard',
+          currentView: todoListId ? 'todo-list' : 'todos',
         }),
+
+      setSelectedWorkspaceId: (id) =>
+        set({ selectedWorkspaceId: id }),
 
       setActiveCollaborators: (collaborators) =>
         set({ activeCollaborators: collaborators }),

@@ -19,6 +19,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { toast } from 'sonner'
+import { AppSidebar } from '@/components/shared/app-sidebar'
 import { ArrowLeft, Lock, Loader2, ShieldCheck, ShieldAlert, Users, Pin, Archive, ArchiveRestore, Share2, History, MoreVertical, Trash2 } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { formatDistanceToNow } from 'date-fns'
@@ -134,6 +135,7 @@ export function NoteEditor() {
         toast.error('Network error')
         setView('dashboard')
       }
+      setInitialLoad(false)
     }
     loadNote()
   }, [selectedNoteId, setView])
@@ -306,10 +308,11 @@ export function NoteEditor() {
     saveTimeoutRef.current = setTimeout(() => { saveContent() }, 500)
   }
 
-  if (!note && !initialLoad) {
-    setView('dashboard')
-    return null
-  }
+  useEffect(() => {
+    if (!note && !initialLoad) setView('dashboard')
+  }, [note, initialLoad, setView])
+
+  if (!note && !initialLoad) return null
 
   const getInitials = (name: string | null) => {
     if (!name) return 'U'
@@ -317,7 +320,10 @@ export function NoteEditor() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-background">
+    <div className="min-h-screen flex bg-background">
+      <AppSidebar activeView="note-editor" />
+
+      <div className="flex-1 flex flex-col min-w-0">
       {/* Header */}
       <header className="sticky top-0 z-50 glass-header">
         <div className="max-w-4xl mx-auto px-3 sm:px-4 h-14 flex items-center gap-2">
@@ -466,6 +472,7 @@ export function NoteEditor() {
         )}
       </div>
 
+      </div>
       {/* Version History Dialog */}
       <Dialog open={historyOpen} onOpenChange={setHistoryOpen}>
         <DialogContent className="sm:max-w-lg">

@@ -7,6 +7,9 @@ import { AuthPage } from '@/components/auth/auth-page'
 import { Dashboard } from '@/components/dashboard/dashboard'
 import { NoteEditor } from '@/components/note/note-editor'
 import { TodoList } from '@/components/todo/todo-list'
+import { NotesList } from '@/components/notes/notes-list'
+import { TodosList } from '@/components/todos/todos-list'
+import { WorkspacesView } from '@/components/workspaces/workspaces-view'
 import { useAppStore } from '@/stores/app-store'
 
 const pageVariants = {
@@ -88,6 +91,39 @@ function AppContent() {
               exit="exit"
             >
               <TodoList />
+            </motion.div>
+          )}
+          {currentView === 'notes' && (
+            <motion.div
+              key="notes"
+              variants={pageVariants}
+              initial="initial"
+              animate="animate"
+              exit="exit"
+            >
+              <NotesList />
+            </motion.div>
+          )}
+          {currentView === 'todos' && (
+            <motion.div
+              key="todos"
+              variants={pageVariants}
+              initial="initial"
+              animate="animate"
+              exit="exit"
+            >
+              <TodosList />
+            </motion.div>
+          )}
+          {currentView === 'workspaces' && (
+            <motion.div
+              key="workspaces"
+              variants={pageVariants}
+              initial="initial"
+              animate="animate"
+              exit="exit"
+            >
+              <WorkspacesView />
             </motion.div>
           )}
         </AnimatePresence>

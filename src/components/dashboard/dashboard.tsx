@@ -15,6 +15,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { Separator } from '@/components/ui/separator'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { toast } from 'sonner'
+import { AppSidebar } from '@/components/shared/app-sidebar'
 import {
   StickyNote,
   CheckSquare,
@@ -92,7 +93,6 @@ export function Dashboard() {
   const [quickNoteTitle, setQuickNoteTitle] = useState('')
   const [quickTodoTitle, setQuickTodoTitle] = useState('')
   const [isQuickCreating, setIsQuickCreating] = useState(false)
-  const { theme, setTheme } = useTheme()
 
   const [decryptedNotes, setDecryptedNotes] = useState<Map<string, { title: string; preview: string }>>(new Map())
   const [decryptedTodos, setDecryptedTodos] = useState<Map<string, string>>(new Map())
@@ -324,6 +324,8 @@ export function Dashboard() {
     return 'Good evening'
   }
 
+  const { theme, setTheme } = useTheme()
+
   useEffect(() => {
     if (!currentUser) setView('auth')
   }, [currentUser, setView])
@@ -338,87 +340,7 @@ export function Dashboard() {
 
   return (
     <div className="min-h-screen flex bg-background">
-      {/* ── Sidebar ── */}
-      <aside className="hidden md:flex flex-col w-[72px] border-r border-border/60 bg-card/50 backdrop-blur-sm">
-        {/* Logo */}
-        <div className="flex items-center justify-center h-16 border-b border-border/40">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#059669] to-[#0d9488] text-white flex items-center justify-center shadow-lg shadow-[#059669]/20">
-            <PenLine className="w-4 h-4" />
-          </div>
-        </div>
-
-        {/* Nav */}
-        <nav className="flex-1 flex flex-col items-center gap-1 py-4">
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" className="w-10 h-10 rounded-xl bg-primary/10 text-primary">
-                  <Home className="w-4 h-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="right">Dashboard</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" className="w-10 h-10 rounded-xl text-muted-foreground hover:text-foreground" onClick={() => selectNote('')}>
-                  <FileText className="w-4 h-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="right">Notes</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" className="w-10 h-10 rounded-xl text-muted-foreground hover:text-foreground" onClick={() => selectTodo('')}>
-                  <ListTodo className="w-4 h-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="right">Todo Lists</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" className="w-10 h-10 rounded-xl text-muted-foreground hover:text-foreground" onClick={() => setPricingOpen(true)}>
-                  <Crown className="w-4 h-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="right">Upgrade</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </nav>
-
-        {/* Bottom actions */}
-        <div className="flex flex-col items-center gap-1 py-4 border-t border-border/40">
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" className="w-10 h-10 rounded-xl text-muted-foreground hover:text-foreground" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
-                  {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="right">{theme === 'dark' ? 'Light mode' : 'Dark mode'}</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" className="w-10 h-10 rounded-xl text-muted-foreground hover:text-destructive" onClick={logout}>
-                  <LogOut className="w-4 h-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="right">Sign out</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </div>
-      </aside>
+      <AppSidebar activeView="dashboard" onUpgradeClick={() => setPricingOpen(true)} />
 
       {/* ── Main Content ── */}
       <div className="flex-1 flex flex-col min-w-0">
@@ -662,7 +584,7 @@ export function Dashboard() {
                         <Badge variant="secondary" className="text-[10px] font-normal">{totalNotes}</Badge>
                       </div>
                       {totalNotes > 4 && (
-                        <Button variant="ghost" size="sm" className="text-xs text-muted-foreground h-7 gap-1" onClick={() => selectNote('')}>
+                        <Button variant="ghost" size="sm" className="text-xs text-muted-foreground h-7 gap-1" onClick={() => setView('notes')}>
                           View all <ChevronRight className="w-3 h-3" />
                         </Button>
                       )}
@@ -726,7 +648,7 @@ export function Dashboard() {
                         <Badge variant="secondary" className="text-[10px] font-normal">{totalTodos}</Badge>
                       </div>
                       {totalTodos > 4 && (
-                        <Button variant="ghost" size="sm" className="text-xs text-muted-foreground h-7 gap-1" onClick={() => selectTodo('')}>
+                        <Button variant="ghost" size="sm" className="text-xs text-muted-foreground h-7 gap-1" onClick={() => setView('todos')}>
                           View all <ChevronRight className="w-3 h-3" />
                         </Button>
                       )}

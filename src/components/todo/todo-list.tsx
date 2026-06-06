@@ -19,6 +19,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { toast } from 'sonner'
+import { AppSidebar } from '@/components/shared/app-sidebar'
 import { ArrowLeft, Plus, Trash2, GripVertical, Loader2, Lock, ShieldCheck, ShieldAlert, Pin, Archive, ArchiveRestore, Share2, MoreVertical } from 'lucide-react'
 
 export function TodoList() {
@@ -97,7 +98,6 @@ export function TodoList() {
           )
           setTitle(decryptedTitle)
           setItems(decryptedItems)
-          setInitialLoad(false)
         } else {
           toast.error('Failed to load todo list')
           setView('dashboard')
@@ -106,6 +106,7 @@ export function TodoList() {
         toast.error('Network error')
         setView('dashboard')
       }
+      setInitialLoad(false)
     }
     loadTodoList()
   }, [selectedTodoListId, setView])
@@ -324,13 +325,17 @@ export function TodoList() {
     }
   }
 
-  if (!todoList && !initialLoad) {
-    setView('dashboard')
-    return null
-  }
+  useEffect(() => {
+    if (!todoList && !initialLoad) setView('dashboard')
+  }, [todoList, initialLoad, setView])
+
+  if (!todoList && !initialLoad) return null
 
   return (
-    <div className="min-h-screen flex flex-col bg-background">
+    <div className="min-h-screen flex bg-background">
+      <AppSidebar activeView="todo-list" />
+
+      <div className="flex-1 flex flex-col min-w-0">
       {/* Header */}
       <header className="sticky top-0 z-50 glass-header">
         <div className="max-w-3xl mx-auto px-3 sm:px-4 h-14 flex items-center gap-2">
@@ -558,6 +563,7 @@ export function TodoList() {
             </div>
           </motion.div>
         )}
+      </div>
       </div>
     </div>
   )
