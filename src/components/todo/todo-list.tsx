@@ -475,9 +475,9 @@ export function TodoList() {
                 exit={{ opacity: 0, x: 20, height: 0 }}
                 transition={{ duration: 0.2 }}
                 draggable={!isLocked}
-                onDragStart={(e) => handleDragStart(e, item.id)}
-                onDragOver={(e) => handleDragOver(e, index)}
-                onDrop={(e) => handleDrop(e, index)}
+                onDragStart={(e) => handleDragStart(e as unknown as React.DragEvent, item.id)}
+                onDragOver={(e) => handleDragOver(e as unknown as React.DragEvent, index)}
+                onDrop={(e) => handleDrop(e as unknown as React.DragEvent, index)}
                 onDragEnd={handleDragEnd}
                 className={`group flex items-center gap-3 p-3 rounded-xl border border-border/50 hover:border-emerald-200 dark:hover:border-emerald-800 transition-all ${
                   draggedId === item.id ? 'opacity-50 scale-95' : ''
