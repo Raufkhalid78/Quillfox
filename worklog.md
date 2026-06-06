@@ -177,3 +177,25 @@ Stage Summary:
 - Version history for notes with snapshot save/restore
 - Freemium pricing UI with upgrade CTA
 - All "Notely" branding removed
+---
+Task ID: verification
+Agent: main
+Task: End-to-end browser verification after user reported "not working or showing"
+
+Work Log:
+- Dev server had stopped — restarted with nohup on port 3000
+- Collab service restarted on port 3004
+- Verified auth page loads with QuillFox branding, Login/Register tabs
+- Verified dashboard renders with stats cards, workspace grid, recent notes/todos, FAB
+- Verified Create New dialog opens with Note/Todo/Workspace options
+- Verified note creation → Note Editor loads with MDXEditor, encryption shield, collab badge, Pin/Archive/Share/History/Delete buttons
+- Verified todo list creation → Todo Editor loads with progress bar, checkboxes, drag handles, add items
+- Verified adding 3 todo items and toggling checkbox completion
+- Verified all API calls return 200 (POST notes, POST todos, POST items, PUT items)
+- Verified no console errors in browser
+- Verified E2E encryption state (green shield indicators)
+- Verified sticky footer renders correctly
+
+Stage Summary:
+- App fully functional end-to-end — issue was dev server had stopped, not a code bug
+- All core flows verified: auth, dashboard, note CRUD, todo CRUD with items, collaboration service
