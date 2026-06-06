@@ -294,8 +294,13 @@ export function Dashboard() {
       .slice(0, 2)
   }
 
+  useEffect(() => {
+    if (!currentUser) {
+      setView('auth')
+    }
+  }, [currentUser, setView])
+
   if (!currentUser) {
-    setView('auth')
     return null
   }
 
