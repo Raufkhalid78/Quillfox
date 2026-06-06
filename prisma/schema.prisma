@@ -68,6 +68,7 @@ model Note {
   author    User      @relation(fields: [authorId], references: [id])
   workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
   locks     DocumentLock[]
+  versions  NoteVersion[]
 }
 
 model TodoList {
@@ -111,4 +112,17 @@ model DocumentLock {
   todoList TodoList? @relation(fields: [documentId], references: [id], onDelete: Cascade)
 
   @@unique([documentType, documentId])
+}
+
+model NoteVersion {
+  id        String   @id @default(cuid())
+  noteId    String
+  title     String
+  content   String
+  version   Int
+  createdAt DateTime @default(now())
+
+  note Note @relation(fields: [noteId], references: [id], onDelete: Cascade)
+
+  @@index([noteId, version])
 }

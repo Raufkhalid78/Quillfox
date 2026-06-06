@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useAppStore } from '@/stores/app-store'
+import { useAppStore, type WorkspaceData } from '@/stores/app-store'
 import { decryptNoteContent, decryptNoteTitle, decryptTodoTitle, encryptNoteTitle, encryptTodoTitle } from '@/lib/encrypted-api'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -21,7 +21,9 @@ import {
   Moon,
   Sun,
   LayoutGrid,
+  FolderOpen,
   Loader2,
+  Eye,
   Clock,
   FileText,
   ListTodo,
@@ -29,6 +31,16 @@ import {
   Sparkles,
   ShieldCheck,
   ShieldAlert,
+  UserPlus,
+  Mail,
+  Crown,
+  Trash2,
+  Pin,
+  Archive,
+  MoreVertical,
+  Star,
+  Zap,
+  Check,
 } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { formatDistanceToNow } from 'date-fns'
@@ -53,6 +65,15 @@ export function Dashboard() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [newNoteTitle, setNewNoteTitle] = useState('')
   const [newTodoTitle, setNewTodoTitle] = useState('')
+  const [newWsTitle, setNewWsTitle] = useState('')
+  const [newWsDescription, setNewWsDescription] = useState('')
+  const [newWsColor, setNewWsColor] = useState('#059669')
+  const [selectedWs, setSelectedWs] = useState<WorkspaceData | null>(null)
+  const [wsDetailOpen, setWsDetailOpen] = useState(false)
+  const [wsMembers, setWsMembers] = useState<Array<{ id: string; userId: string; role: string; joinedAt: string; user: { id: string; name: string | null; email: string; image: string | null } }>>([])
+  const [inviteEmail, setInviteEmail] = useState('')
+  const [isInviting, setIsInviting] = useState(false)
+  const [pricingOpen, setPricingOpen] = useState(false)
   const { theme, setTheme } = useTheme()
 
   // Decrypted preview data
@@ -166,6 +187,93 @@ export function Dashboard() {
     }
   }
 
+  const workspaceColors = [
+    { name: 'emerald', value: '#059669' },
+    { name: 'teal', value: '#0d9488' },
+    { name: 'amber', value: '#d97706' },
+    { name: 'rose', value: '#e11d48' },
+    { name: 'violet', value: '#7c3aed' },
+    { name: 'blue', value: '#2563eb' },
+  ]
+
+  const handleCreateWorkspace = async () => {
+    if (!currentUser) return
+    const title = newWsTitle.trim() || 'Untitled Workspace'
+    try {
+      const res = await fetch('/api/workspaces', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, description: newWsDescription.trim() || null, color: newWsColor, ownerId: currentUser.id }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setWorkspacesAction([...workspaces, data])
+        setDialogOpen(false)
+        setNewWsTitle('')
+        setNewWsDescription('')
+        setNewWsColor('#059669')
+        toast.success('Workspace created')
+      }
+    } catch {
+      toast.error('Failed to create workspace')
+    }
+  }
+
+  const handleOpenWsDetail = async (ws: WorkspaceData) => {
+    setSelectedWs(ws)
+    setWsDetailOpen(true)
+    // Fetch workspace members
+    try {
+      const res = await fetch(`/api/workspaces/${ws.id}/members`)
+      if (res.ok) {
+        const data = await res.json()
+        setWsMembers(data)
+      }
+    } catch { /* ignore */ }
+  }
+
+  const handleInviteMember = async () => {
+    if (!selectedWs || !inviteEmail.trim()) return
+    setIsInviting(true)
+    try {
+      const res = await fetch(`/api/workspaces/${selectedWs.id}/members`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: inviteEmail.trim(), role: 'member' }),
+      })
+      if (res.ok) {
+        const member = await res.json()
+        setWsMembers([...wsMembers, member])
+        setInviteEmail('')
+        toast.success(`Invited ${inviteEmail.trim()}`)
+      } else {
+        const data = await res.json()
+        toast.error(data.error || 'Failed to invite')
+      }
+    } catch {
+      toast.error('Failed to invite member')
+    } finally {
+      setIsInviting(false)
+    }
+  }
+
+  const handleRemoveMember = async (memberId: string) => {
+    if (!selectedWs) return
+    try {
+      const res = await fetch(`/api/workspaces/${selectedWs.id}/members`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ memberId }),
+      })
+      if (res.ok) {
+        setWsMembers(wsMembers.filter((m) => m.id !== memberId))
+        toast.success('Member removed')
+      }
+    } catch {
+      toast.error('Failed to remove member')
+    }
+  }
+
   const recentNotes = notes
     .filter((n) => !n.isArchived)
     .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
@@ -225,6 +333,23 @@ export function Dashboard() {
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Premium Upgrade */}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5 text-amber-600 border-amber-300 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-950/40"
+                    onClick={() => setPricingOpen(true)}
+                  >
+                    <Crown className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline text-xs font-medium">Upgrade</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Upgrade to QuillFox Premium</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
             <Button
               variant="ghost"
               size="icon"
@@ -289,6 +414,7 @@ export function Dashboard() {
                   key={ws.id}
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
+                  onClick={() => handleOpenWsDetail(ws)}
                 >
                   <Card className="overflow-hidden border-border/50 hover:shadow-md transition-shadow cursor-pointer">
                     <div className="h-2" style={{ backgroundColor: ws.color }} />
@@ -558,7 +684,271 @@ export function Dashboard() {
                 </div>
               </CardContent>
             </Card>
+
+            {/* New Workspace */}
+            <Card className="cursor-pointer border-border/50 hover:border-emerald-300 hover:shadow-md transition-all">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="p-2 rounded-lg bg-emerald-100 text-emerald-700">
+                    <FolderOpen className="w-5 h-5" />
+                  </div>
+                  <h3 className="font-medium">New Workspace</h3>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="new-ws-title">Title</Label>
+                  <Input
+                    id="new-ws-title"
+                    placeholder="Enter workspace title..."
+                    value={newWsTitle}
+                    onChange={(e) => setNewWsTitle(e.target.value)}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                  <Label htmlFor="new-ws-desc">Description <span className="text-muted-foreground font-normal">(optional)</span></Label>
+                  <Input
+                    id="new-ws-desc"
+                    placeholder="Brief description..."
+                    value={newWsDescription}
+                    onChange={(e) => setNewWsDescription(e.target.value)}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                  <div className="space-y-1.5">
+                    <Label>Color</Label>
+                    <div className="flex gap-2">
+                      {workspaceColors.map((c) => (
+                        <button
+                          key={c.name}
+                          type="button"
+                          className="w-7 h-7 rounded-full border-2 transition-all hover:scale-110"
+                          style={{
+                            backgroundColor: c.value,
+                            borderColor: newWsColor === c.value ? '#171717' : 'transparent',
+                          }}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setNewWsColor(c.value)
+                          }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    className="w-full bg-emerald-600 hover:bg-emerald-700"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleCreateWorkspace()
+                    }}
+                  >
+                    Create Workspace
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Workspace Detail Dialog */}
+      <Dialog open={wsDetailOpen} onOpenChange={setWsDetailOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: selectedWs?.color }} />
+              {selectedWs?.title || 'Workspace'}
+            </DialogTitle>
+            <DialogDescription>{selectedWs?.description || 'No description'}</DialogDescription>
+          </DialogHeader>
+          {selectedWs && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-3 gap-3">
+                <Card className="border-border/50">
+                  <CardContent className="p-3 text-center">
+                    <p className="text-2xl font-bold text-emerald-600">{selectedWs._count.notes}</p>
+                    <p className="text-xs text-muted-foreground">Notes</p>
+                  </CardContent>
+                </Card>
+                <Card className="border-border/50">
+                  <CardContent className="p-3 text-center">
+                    <p className="text-2xl font-bold text-teal-600">{selectedWs._count.todoLists}</p>
+                    <p className="text-xs text-muted-foreground">Todo Lists</p>
+                  </CardContent>
+                </Card>
+                <Card className="border-border/50">
+                  <CardContent className="p-3 text-center">
+                    <p className="text-2xl font-bold text-amber-600">{selectedWs._count.notes + selectedWs._count.todoLists}</p>
+                    <p className="text-xs text-muted-foreground">Total Items</p>
+                  </CardContent>
+                </Card>
+              </div>
+              <div className="flex items-center text-sm text-muted-foreground">
+                <LayoutGrid className="w-4 h-4 mr-2" />
+                Created {formatDistanceToNow(new Date(selectedWs.createdAt), { addSuffix: true })}
+              </div>
+              {/* Invite Member */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-sm font-medium">
+                  <UserPlus className="w-4 h-4 text-emerald-600" />
+                  Invite Members
+                </div>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Enter email address..."
+                    value={inviteEmail}
+                    onChange={(e) => setInviteEmail(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') { e.preventDefault(); handleInviteMember() }
+                    }}
+                    className="flex-1"
+                  />
+                  <Button
+                    size="sm"
+                    className="bg-emerald-600 hover:bg-emerald-700"
+                    onClick={handleInviteMember}
+                    disabled={isInviting || !inviteEmail.trim()}
+                  >
+                    {isInviting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
+                  </Button>
+                </div>
+              </div>
+
+              {/* Members List */}
+              {wsMembers.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    <Users className="w-4 h-4 text-emerald-600" />
+                    Members ({wsMembers.length})
+                  </div>
+                  <div className="max-h-48 overflow-y-auto space-y-2">
+                    {wsMembers.map((member) => (
+                      <div key={member.id} className="flex items-center gap-3 p-2 rounded-lg bg-muted/50">
+                        <Avatar className="h-7 w-7">
+                          <AvatarFallback className="text-[10px] bg-emerald-100 text-emerald-700">
+                            {getInitials(member.user.name)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{member.user.name || member.user.email}</p>
+                          <p className="text-xs text-muted-foreground truncate">{member.user.email}</p>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <Badge variant={member.role === 'owner' ? 'default' : 'secondary'} className="text-[10px]">
+                            {member.role === 'owner' && <Crown className="w-2.5 h-2.5 mr-0.5" />}
+                            {member.role}
+                          </Badge>
+                          {member.role !== 'owner' && currentUser?.id !== member.userId && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                              onClick={() => handleRemoveMember(member.id)}
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => {
+                    setWsDetailOpen(false)
+                    const wsNotes = notes.filter((n) => n.workspaceId === selectedWs.id)
+                    if (wsNotes.length > 0) {
+                      selectNote(wsNotes[0].id)
+                    } else {
+                      toast.info('No notes in this workspace yet')
+                    }
+                  }}
+                >
+                  <Eye className="w-4 h-4 mr-1.5" />
+                  View Notes
+                </Button>
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => {
+                    setWsDetailOpen(false)
+                    const wsTodos = todoLists.filter((t) => t.workspaceId === selectedWs.id)
+                    if (wsTodos.length > 0) {
+                      selectTodo(wsTodos[0].id)
+                    } else {
+                      toast.info('No todo lists in this workspace yet')
+                    }
+                  }}
+                >
+                  <Eye className="w-4 h-4 mr-1.5" />
+                  View Todos
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+      {/* Pricing Dialog */}
+      <Dialog open={pricingOpen} onOpenChange={setPricingOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Crown className="w-5 h-5 text-amber-500" />
+              Choose Your Plan
+            </DialogTitle>
+            <DialogDescription>Unlock the full power of QuillFox</DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+            {/* Free Plan */}
+            <Card className="border-border/50">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Free</CardTitle>
+                <p className="text-xs text-muted-foreground">For individuals</p>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <p className="text-2xl font-bold">$0<span className="text-sm font-normal text-muted-foreground">/mo</span></p>
+                <div className="space-y-2 text-xs">
+                  <div className="flex items-center gap-2"><Check className="w-3 h-3 text-emerald-500" /> Unlimited local notes</div>
+                  <div className="flex items-center gap-2"><Check className="w-3 h-3 text-emerald-500" /> Unlimited todo lists</div>
+                  <div className="flex items-center gap-2"><Check className="w-3 h-3 text-emerald-500" /> Sync up to 2 devices</div>
+                  <div className="flex items-center gap-2"><Check className="w-3 h-3 text-emerald-500" /> Share with 1 person</div>
+                  <div className="flex items-center gap-2"><Check className="w-3 h-3 text-emerald-500" /> End-to-end encryption</div>
+                </div>
+                <Button variant="outline" size="sm" className="w-full" disabled>Current Plan</Button>
+              </CardContent>
+            </Card>
+
+            {/* Premium Plan */}
+            <Card className="border-amber-300 dark:border-amber-800 relative overflow-hidden">
+              <div className="absolute top-0 right-0 bg-amber-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-bl-lg">POPULAR</div>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base flex items-center gap-1.5">
+                  <Star className="w-4 h-4 text-amber-500" />
+                  Premium
+                </CardTitle>
+                <p className="text-xs text-muted-foreground">For teams & power users</p>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <p className="text-2xl font-bold">$2.99<span className="text-sm font-normal text-muted-foreground">/mo</span></p>
+                <div className="space-y-2 text-xs">
+                  <div className="flex items-center gap-2"><Check className="w-3 h-3 text-emerald-500" /> Everything in Free</div>
+                  <div className="flex items-center gap-2"><Check className="w-3 h-3 text-emerald-500" /> Unlimited collaborators</div>
+                  <div className="flex items-center gap-2"><Check className="w-3 h-3 text-emerald-500" /> Unlimited device sync</div>
+                  <div className="flex items-center gap-2"><Check className="w-3 h-3 text-emerald-500" /> Version history</div>
+                  <div className="flex items-center gap-2"><Check className="w-3 h-3 text-emerald-500" /> Custom themes</div>
+                  <div className="flex items-center gap-2"><Check className="w-3 h-3 text-emerald-500" /> Ad-free experience</div>
+                </div>
+                <Button size="sm" className="w-full bg-amber-500 hover:bg-amber-600" onClick={() => toast.info('Premium subscription coming soon!')}>
+                  Upgrade Now
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+          <p className="text-xs text-center text-muted-foreground mt-4">
+            Annual plan: $29.99/year — Save 17%
+          </p>
         </DialogContent>
       </Dialog>
     </div>

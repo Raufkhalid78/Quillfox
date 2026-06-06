@@ -4,13 +4,15 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAppStore } from '@/stores/app-store'
 import { encryptTodoTitle, decryptTodoTitle, decryptNoteTitle } from '@/lib/encrypted-api'
+import { useCollabSocket } from '@/hooks/use-collab-socket'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { toast } from 'sonner'
-import { ArrowLeft, Plus, Trash2, GripVertical, Loader2, Lock, ShieldCheck, ShieldAlert } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, GripVertical, Loader2, Lock, ShieldCheck, ShieldAlert, Pin, Archive, ArchiveRestore, Share2 } from 'lucide-react'
 
 export function TodoList() {
   const currentUser = useAppStore((s) => s.currentUser)
@@ -18,8 +20,8 @@ export function TodoList() {
   const todoLists = useAppStore((s) => s.todoLists)
   const updateTodoListItems = useAppStore((s) => s.updateTodoListItems)
   const updateTodoListTitle = useAppStore((s) => s.updateTodoListTitle)
-  const isLocked = useAppStore((s) => s.isLocked)
-  const lockedByUser = useAppStore((s) => s.lockedByUser)
+  const setActiveCollaborators = useAppStore((s) => s.setActiveCollaborators)
+  const setLock = useAppStore((s) => s.setLock)
   const setView = useAppStore((s) => s.setView)
   const isEncryptedSession = useAppStore((s) => s.isEncryptedSession)
 
@@ -40,6 +42,33 @@ export function TodoList() {
   itemsRef.current = items
 
   const todoList = todoLists.find((t) => t.id === selectedTodoListId)
+
+  // Wire collab socket hook
+  const collab = useCollabSocket({
+    documentType: 'todolist',
+    documentId: selectedTodoListId || '',
+    userId: currentUser?.id || '',
+    userName: currentUser?.name || currentUser?.email || '',
+    avatar: currentUser?.image,
+    onItemCompleted: (itemId, completed) => {
+      setItems((prev) => prev.map((item) =>
+        item.id === itemId ? { ...item, completed } : item
+      ))
+      toast.info(`Item ${completed ? 'completed' : 'unchecked'} by collaborator`)
+    },
+  })
+
+  // Sync collab state to store
+  useEffect(() => {
+    setActiveCollaborators(collab.activeUsers.map(u => ({ userId: u.userId, userName: u.userName, avatar: u.avatar })))
+  }, [collab.activeUsers, setActiveCollaborators])
+
+  useEffect(() => {
+    setLock(collab.lockStatus.isLocked, collab.lockStatus.lockedByUser)
+  }, [collab.lockStatus.isLocked, collab.lockStatus.lockedByUser, setLock])
+
+  const isLocked = useAppStore((s) => s.isLocked)
+  const lockedByUser = useAppStore((s) => s.lockedByUser)
 
   // Load todo list data & decrypt
   useEffect(() => {
@@ -235,6 +264,59 @@ export function TodoList() {
     }
   }
 
+  const setTodoListsAction = useAppStore((s) => s.setTodoLists)
+
+  const handleTogglePin = async () => {
+    if (!selectedTodoListId || !todoList) return
+    const newPinned = !todoList.isPinned
+    try {
+      const res = await fetch(`/api/todos/${selectedTodoListId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isPinned: newPinned }),
+      })
+      if (res.ok) {
+        const updated = todoLists.map((t) => t.id === selectedTodoListId ? { ...t, isPinned: newPinned } : t)
+        setTodoListsAction(updated)
+        toast.success(newPinned ? 'List pinned' : 'List unpinned')
+      }
+    } catch { toast.error('Failed to update') }
+  }
+
+  const handleToggleArchive = async () => {
+    if (!selectedTodoListId || !todoList) return
+    const newArchived = !todoList.isArchived
+    try {
+      const res = await fetch(`/api/todos/${selectedTodoListId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isArchived: newArchived }),
+      })
+      if (res.ok) {
+        if (newArchived) {
+          const updated = todoLists.filter((t) => t.id !== selectedTodoListId)
+          setTodoListsAction(updated)
+          setView('dashboard')
+        } else {
+          const updated = todoLists.map((t) => t.id === selectedTodoListId ? { ...t, isArchived: false } : t)
+          setTodoListsAction(updated)
+        }
+        toast.success(newArchived ? 'List archived' : 'List restored')
+      }
+    } catch { toast.error('Failed to update') }
+  }
+
+  const handleShare = async () => {
+    if (!selectedTodoListId) return
+    const url = `${window.location.origin}/?todo=${selectedTodoListId}`
+    try {
+      await navigator.clipboard.writeText(url)
+      toast.success('Share link copied to clipboard!')
+    } catch {
+      toast.error('Failed to copy link')
+    }
+  }
+
   if (!todoList && !initialLoad) {
     setView('dashboard')
     return null
@@ -291,6 +373,40 @@ export function TodoList() {
                 Saving
               </motion.div>
             )}
+
+            {/* Collaboration indicator */}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge variant="outline" className={`gap-1 text-xs ${collab.isConnected ? 'text-emerald-600 border-emerald-300 bg-emerald-50' : 'text-muted-foreground'}`}>
+                    <div className={`w-1.5 h-1.5 rounded-full ${collab.isConnected ? 'bg-emerald-500 animate-pulse' : 'bg-muted-foreground'}`} />
+                    {collab.isConnected ? 'Live' : 'Offline'}
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent>{collab.isConnected ? 'Real-time collaboration active' : 'Collaboration disconnected'}</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            <Button variant="outline" size="icon" className="h-8 w-8" onClick={handleShare} title="Share">
+              <Share2 className="w-4 h-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className={`h-8 w-8 ${todoList?.isPinned ? 'text-amber-500' : 'text-muted-foreground'}`}
+              onClick={handleTogglePin}
+              title={todoList?.isPinned ? 'Unpin' : 'Pin'}
+            >
+              <Pin className={`w-4 h-4 ${todoList?.isPinned ? 'fill-current' : ''}`} />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-muted-foreground"
+              onClick={handleToggleArchive}
+              title={todoList?.isArchived ? 'Restore from Archive' : 'Archive'}
+            >
+              {todoList?.isArchived ? <ArchiveRestore className="w-4 h-4" /> : <Archive className="w-4 h-4" />}
+            </Button>
             <Button variant="outline" size="sm" onClick={handleDelete} className="text-destructive hover:text-destructive">
               Delete
             </Button>

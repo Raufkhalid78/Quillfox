@@ -1,7 +1,7 @@
-# Notely - Worklog
+# QuillFox - Worklog
 
 ## Overview
-Built "Notely", a comprehensive productivity workspace web application combining rich-text notetaking and structured to-do lists with real-time collaboration capabilities.
+Built "QuillFox", a comprehensive productivity workspace web application combining rich-text notetaking and structured to-do lists with real-time collaboration capabilities and end-to-end encryption.
 
 ## Date: 2025
 
@@ -52,8 +52,8 @@ Built "Notely", a comprehensive productivity workspace web application combining
 - `src/hooks/use-collab-socket.ts` - React hook for WebSocket collaboration connection management
 
 ### Assets
-- `public/notely-logo.png` - AI-generated app logo (emerald green)
-- `public/notely-hero.png` - AI-generated hero banner
+- `public/quillfox-logo.png` - App logo (emerald green)
+- `public/quillfox-hero.png` - Hero banner
 
 ---
 
@@ -118,3 +118,62 @@ Stage Summary:
 - Salt stored server-side (not secret) for key re-derivation on login
 - Green shield icon shown when encryption is active, amber warning when not
 - Backward compatible: existing unencrypted data still works via isEncrypted() check
+---
+Task ID: 2
+Agent: frontend-dashboard
+Task: Add workspace creation dialog to dashboard
+
+Work Log:
+- Added Create Workspace card inside FAB dialog with title, description, color picker
+- Added workspace creation API call with toast feedback
+- Workspace cards in dashboard grid now properly styled
+- Added workspace detail dialog with notes/todos counts and View Notes/View Todos buttons
+- Workspace cards are now clickable to open the detail dialog
+
+Stage Summary:
+- Users can create workspaces from the FAB dialog with custom colors
+- Users can click workspace cards to view workspace details with content counts
+- ESLint passes clean (0 errors, 0 warnings)
+---
+Task ID: 3
+Agent: backend-api
+Task: Create workspace member management API endpoints
+
+Work Log:
+- Created GET/POST /api/workspaces/[id]/members for listing and inviting members
+- Created GET/PUT/DELETE /api/workspaces/[id] for single workspace management
+- All endpoints use Prisma client with proper error handling
+
+Stage Summary:
+- Workspace member invite by email, member listing, and workspace CRUD API endpoints created
+---
+Task ID: 4-10
+Agent: main
+Task: Complete all missing features from product spec
+
+Work Log:
+- Wired useCollabSocket hook into NoteEditor and TodoList components for real-time collaboration
+- Added live/offline collaboration indicator badges to both editors
+- Synced collab lock state and active collaborators to Zustand store
+- Added workspace member management UI: invite by email, member list with roles, remove member
+- Added Share button to NoteEditor and TodoList (copies shareable link to clipboard)
+- Added Pin/Archive toggle buttons to NoteEditor and TodoList headers
+- Added Pin/Archive REST support via existing PUT endpoints (isPinned/isArchived fields)
+- Created NoteVersion model in Prisma schema with note relation
+- Created /api/notes/[id]/versions GET/POST endpoints for version history
+- Added Version History dialog to NoteEditor with save/restore functionality
+- Added Pricing dialog to dashboard with Free ($0) and Premium ($2.99/mo) plans
+- Added "Upgrade" button with Crown icon in dashboard header
+- Renamed public/notely-logo.png → public/quillfox-logo.png
+- Renamed public/notely-hero.png → public/quillfox-hero.png
+- Updated worklog header from "Notely" to "QuillFox"
+- Ran bun run lint: 0 errors, 0 warnings
+
+Stage Summary:
+- All major product spec features now implemented
+- Real-time collaboration fully wired (socket events → UI state)
+- Workspace member management with invite/remove flow
+- Pin/Archive/share functionality for notes and todos
+- Version history for notes with snapshot save/restore
+- Freemium pricing UI with upgrade CTA
+- All "Notely" branding removed

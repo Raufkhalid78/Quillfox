@@ -4,13 +4,17 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { motion } from 'framer-motion'
 import { useAppStore } from '@/stores/app-store'
 import { encryptNoteContent, encryptNoteTitle, decryptNoteContent, decryptNoteTitle } from '@/lib/encrypted-api'
+import { useCollabSocket } from '@/hooks/use-collab-socket'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { toast } from 'sonner'
-import { ArrowLeft, Lock, Loader2, ShieldCheck, ShieldAlert } from 'lucide-react'
+import { ArrowLeft, Lock, Loader2, ShieldCheck, ShieldAlert, Users, Pin, Archive, ArchiveRestore, Share2, History } from 'lucide-react'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { formatDistanceToNow } from 'date-fns'
 
 // Lazy-loaded MDX Editor
 function LazyEditor({ content, onChange, isLocked }: { content: string; onChange: (val: string) => void; isLocked: boolean }) {
@@ -58,9 +62,8 @@ export function NoteEditor() {
   const notes = useAppStore((s) => s.notes)
   const updateNoteContent = useAppStore((s) => s.updateNoteContent)
   const updateNoteTitle = useAppStore((s) => s.updateNoteTitle)
-  const activeCollaborators = useAppStore((s) => s.activeCollaborators)
-  const isLocked = useAppStore((s) => s.isLocked)
-  const lockedByUser = useAppStore((s) => s.lockedByUser)
+  const setActiveCollaborators = useAppStore((s) => s.setActiveCollaborators)
+  const setLock = useAppStore((s) => s.setLock)
   const setView = useAppStore((s) => s.setView)
   const isEncryptedSession = useAppStore((s) => s.isEncryptedSession)
 
@@ -68,9 +71,38 @@ export function NoteEditor() {
   const [content, setContent] = useState('')
   const [isSaving, setIsSaving] = useState(false)
   const [initialLoad, setInitialLoad] = useState(true)
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const [versions, setVersions] = useState<Array<{ id: string; title: string; content: string; version: number; createdAt: string }>>([])
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   const note = notes.find((n) => n.id === selectedNoteId)
+
+  // Wire collab socket hook
+  const collab = useCollabSocket({
+    documentType: 'note',
+    documentId: selectedNoteId || '',
+    userId: currentUser?.id || '',
+    userName: currentUser?.name || currentUser?.email || '',
+    avatar: currentUser?.image,
+    onContentUpdate: (newContent) => {
+      // When another user updates content, reload
+      setContent(newContent)
+      toast.info('Note updated by collaborator')
+    },
+  })
+
+  // Sync collab state to store
+  useEffect(() => {
+    setActiveCollaborators(collab.activeUsers.map(u => ({ userId: u.userId, userName: u.userName, avatar: u.avatar })))
+  }, [collab.activeUsers, setActiveCollaborators])
+
+  useEffect(() => {
+    setLock(collab.lockStatus.isLocked, collab.lockStatus.lockedByUser)
+  }, [collab.lockStatus.isLocked, collab.lockStatus.lockedByUser, setLock])
+
+  const isLocked = useAppStore((s) => s.isLocked)
+  const lockedByUser = useAppStore((s) => s.lockedByUser)
+  const activeCollaborators = useAppStore((s) => s.activeCollaborators)
 
   // Load note data & decrypt
   useEffect(() => {
@@ -125,9 +157,14 @@ export function NoteEditor() {
     }
   }, [selectedNoteId, title, content, isSaving, updateNoteContent, updateNoteTitle])
 
+  // Request lock when user starts editing, release when idle
   const handleContentChange = useCallback(
     (newContent: string) => {
       setContent(newContent)
+      // Request lock if not locked by us
+      if (!collab.lockStatus.isLocked || collab.lockStatus.lockedByUser !== currentUser?.name) {
+        collab.requestLock()
+      }
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current)
       }
@@ -135,13 +172,16 @@ export function NoteEditor() {
         saveContent()
       }, 1500)
     },
-    [saveContent]
+    [saveContent, collab, currentUser?.name]
   )
 
   const handleTitleChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const newTitle = e.target.value
       setTitle(newTitle)
+      if (!collab.lockStatus.isLocked || collab.lockStatus.lockedByUser !== currentUser?.name) {
+        collab.requestLock()
+      }
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current)
       }
@@ -149,7 +189,7 @@ export function NoteEditor() {
         saveContent()
       }, 1500)
     },
-    [saveContent]
+    [saveContent, collab, currentUser?.name]
   )
 
   const handleDelete = async () => {
@@ -165,6 +205,98 @@ export function NoteEditor() {
     } catch {
       toast.error('Failed to delete note')
     }
+  }
+
+  const setNotesAction = useAppStore((s) => s.setNotes)
+
+  const handleTogglePin = async () => {
+    if (!selectedNoteId || !note) return
+    const newPinned = !note.isPinned
+    try {
+      const res = await fetch(`/api/notes/${selectedNoteId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isPinned: newPinned }),
+      })
+      if (res.ok) {
+        const updated = notes.map((n) => n.id === selectedNoteId ? { ...n, isPinned: newPinned } : n)
+        setNotesAction(updated)
+        toast.success(newPinned ? 'Note pinned' : 'Note unpinned')
+      }
+    } catch { toast.error('Failed to update') }
+  }
+
+  const handleToggleArchive = async () => {
+    if (!selectedNoteId || !note) return
+    const newArchived = !note.isArchived
+    try {
+      const res = await fetch(`/api/notes/${selectedNoteId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isArchived: newArchived }),
+      })
+      if (res.ok) {
+        if (newArchived) {
+          const updated = notes.filter((n) => n.id !== selectedNoteId)
+          setNotesAction(updated)
+          setView('dashboard')
+        } else {
+          const updated = notes.map((n) => n.id === selectedNoteId ? { ...n, isArchived: false } : n)
+          setNotesAction(updated)
+        }
+        toast.success(newArchived ? 'Note archived' : 'Note restored')
+      }
+    } catch { toast.error('Failed to update') }
+  }
+
+  const handleShare = async () => {
+    if (!selectedNoteId) return
+    const url = `${window.location.origin}/?note=${selectedNoteId}`
+    try {
+      await navigator.clipboard.writeText(url)
+      toast.success('Share link copied to clipboard!')
+    } catch {
+      toast.error('Failed to copy link')
+    }
+  }
+
+  const handleOpenHistory = async () => {
+    if (!selectedNoteId) return
+    try {
+      const res = await fetch(`/api/notes/${selectedNoteId}/versions`)
+      if (res.ok) {
+        const data = await res.json()
+        setVersions(data)
+        setHistoryOpen(true)
+      }
+    } catch { toast.error('Failed to load history') }
+  }
+
+  const handleSaveVersion = async () => {
+    if (!selectedNoteId) return
+    try {
+      const res = await fetch(`/api/notes/${selectedNoteId}/versions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, content }),
+      })
+      if (res.ok) {
+        toast.success('Version saved')
+        const updatedVersions = await res.json()
+        setVersions([updatedVersions, ...versions])
+      }
+    } catch { toast.error('Failed to save version') }
+  }
+
+  const handleRestoreVersion = async (version: typeof versions[0]) => {
+    if (!selectedNoteId) return
+    setTitle(version.title)
+    setContent(version.content)
+    setHistoryOpen(false)
+    toast.success(`Restored version ${version.version}`)
+    // Trigger auto-save
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
+    saveTimeoutRef.current = setTimeout(() => { saveContent() }, 500)
   }
 
   if (!note && !initialLoad) {
@@ -229,6 +361,19 @@ export function NoteEditor() {
               </motion.div>
             )}
 
+            {/* Collaboration indicator */}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge variant="outline" className={`gap-1 text-xs ${collab.isConnected ? 'text-emerald-600 border-emerald-300 bg-emerald-50' : 'text-muted-foreground'}`}>
+                    <div className={`w-1.5 h-1.5 rounded-full ${collab.isConnected ? 'bg-emerald-500 animate-pulse' : 'bg-muted-foreground'}`} />
+                    {collab.isConnected ? 'Live' : 'Offline'}
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent>{collab.isConnected ? 'Real-time collaboration active' : 'Collaboration disconnected'}</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+
             {/* Collaborators */}
             {activeCollaborators.length > 0 && (
               <div className="flex -space-x-2">
@@ -242,6 +387,30 @@ export function NoteEditor() {
               </div>
             )}
 
+            <Button variant="outline" size="icon" className="h-8 w-8" onClick={handleShare} title="Share">
+              <Share2 className="w-4 h-4" />
+            </Button>
+            <Button variant="outline" size="icon" className="h-8 w-8" onClick={handleOpenHistory} title="Version History">
+              <History className="w-4 h-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className={`h-8 w-8 ${note?.isPinned ? 'text-amber-500' : 'text-muted-foreground'}`}
+              onClick={handleTogglePin}
+              title={note?.isPinned ? 'Unpin' : 'Pin'}
+            >
+              <Pin className={`w-4 h-4 ${note?.isPinned ? 'fill-current' : ''}`} />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-muted-foreground"
+              onClick={handleToggleArchive}
+              title={note?.isArchived ? 'Restore from Archive' : 'Archive'}
+            >
+              {note?.isArchived ? <ArchiveRestore className="w-4 h-4" /> : <Archive className="w-4 h-4" />}
+            </Button>
             <Button variant="outline" size="sm" onClick={handleDelete} className="text-destructive hover:text-destructive">
               Delete
             </Button>
@@ -282,6 +451,54 @@ export function NoteEditor() {
           />
         )}
       </div>
+
+      {/* Version History Dialog */}
+      <Dialog open={historyOpen} onOpenChange={setHistoryOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <History className="w-5 h-5 text-emerald-600" />
+              Version History
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <Button
+              size="sm"
+              className="w-full bg-emerald-600 hover:bg-emerald-700"
+              onClick={handleSaveVersion}
+            >
+              Save Current Version
+            </Button>
+            <div className="max-h-96 overflow-y-auto space-y-2">
+              {versions.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-8">No versions saved yet. Click &ldquo;Save Current Version&rdquo; to create a snapshot.</p>
+              ) : (
+                versions.map((v) => (
+                  <div key={v.id} className="flex items-center gap-3 p-3 rounded-lg border border-border/50 hover:border-emerald-300 transition-colors">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="secondary" className="text-xs">v{v.version}</Badge>
+                        <span className="text-xs text-muted-foreground">
+                          {formatDistanceToNow(new Date(v.createdAt), { addSuffix: true })}
+                        </span>
+                      </div>
+                      <p className="text-sm font-medium truncate mt-1">{v.title}</p>
+                      <p className="text-xs text-muted-foreground truncate">{v.content.substring(0, 80)}...</p>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleRestoreVersion(v)}
+                    >
+                      Restore
+                    </Button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
