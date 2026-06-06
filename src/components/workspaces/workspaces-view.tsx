@@ -162,6 +162,19 @@ export function WorkspacesView() {
     }
   }
 
+  const handleDeleteWorkspace = async () => {
+    if (!selectedWs) return
+    try {
+      const res = await fetch(`/api/workspaces/${selectedWs.id}`, { method: 'DELETE' })
+      if (res.ok) {
+        setWorkspacesAction(workspaces.filter((w) => w.id !== selectedWs.id))
+        setWsDetailOpen(false)
+        setSelectedWs(null)
+        toast.success('Workspace deleted')
+      }
+    } catch { toast.error('Failed to delete workspace') }
+  }
+
   const handleQuickCreateNote = async () => {
     if (!currentUser || !selectedWs) return
     const plainTitle = quickNoteTitle.trim() || 'Untitled Note'
@@ -484,6 +497,17 @@ export function WorkspacesView() {
                   {isInviting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UserPlus className="w-3.5 h-3.5" />}
                 </Button>
               </div>
+            </div>
+            {/* Delete Workspace */}
+            <div className="pt-2 border-t border-border/40">
+              <Button
+                variant="ghost"
+                className="w-full text-destructive hover:text-destructive hover:bg-destructive/10 rounded-xl h-9 text-xs gap-1.5"
+                onClick={handleDeleteWorkspace}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                Delete Workspace
+              </Button>
             </div>
           </div>
         </DialogContent>

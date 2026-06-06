@@ -302,6 +302,19 @@ export function Dashboard() {
     } catch { toast.error('Failed to remove member') }
   }
 
+  const handleDeleteWorkspace = async () => {
+    if (!selectedWs) return
+    try {
+      const res = await fetch(`/api/workspaces/${selectedWs.id}`, { method: 'DELETE' })
+      if (res.ok) {
+        setWorkspacesAction(workspaces.filter((w) => w.id !== selectedWs.id))
+        setWsDetailOpen(false)
+        setSelectedWs(null)
+        toast.success('Workspace deleted')
+      }
+    } catch { toast.error('Failed to delete workspace') }
+  }
+
   const recentNotes = notes
     .filter((n) => !n.isArchived)
     .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
@@ -845,6 +858,17 @@ export function Dashboard() {
                   else toast.info('No todo lists in this workspace yet')
                 }}>
                   <Eye className="w-3.5 h-3.5 mr-1" /> Todos
+                </Button>
+              </div>
+              {/* Delete Workspace */}
+              <div className="pt-2 border-t border-border/40">
+                <Button
+                  variant="ghost"
+                  className="w-full text-destructive hover:text-destructive hover:bg-destructive/10 rounded-xl h-9 text-xs gap-1.5"
+                  onClick={handleDeleteWorkspace}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Delete Workspace
                 </Button>
               </div>
             </div>

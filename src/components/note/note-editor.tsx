@@ -4,7 +4,6 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { motion } from 'framer-motion'
 import { useAppStore } from '@/stores/app-store'
 import { encryptNoteContent, encryptNoteTitle, decryptNoteContent, decryptNoteTitle } from '@/lib/encrypted-api'
-import { useCollabSocket } from '@/hooks/use-collab-socket'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -20,49 +19,9 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { toast } from 'sonner'
 import { AppSidebar } from '@/components/shared/app-sidebar'
-import { ArrowLeft, Lock, Loader2, ShieldCheck, ShieldAlert, Users, Pin, Archive, ArchiveRestore, Share2, History, MoreVertical, Trash2 } from 'lucide-react'
+import { ArrowLeft, Loader2, ShieldCheck, ShieldAlert, Pin, Archive, ArchiveRestore, Share2, History, MoreVertical, Trash2 } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { formatDistanceToNow } from 'date-fns'
-
-// Lazy-loaded MDX Editor
-function LazyEditor({ content, onChange, isLocked }: { content: string; onChange: (val: string) => void; isLocked: boolean }) {
-  const [EditorModule, setEditorModule] = useState<any>(null)
-
-  useEffect(() => {
-    import('@mdxeditor/editor').then((mod) => {
-      setEditorModule(mod)
-    }).catch(() => {
-      // Fallback: show textarea
-      setEditorModule(null)
-    })
-  }, [])
-
-  if (!EditorModule) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="w-6 h-6 animate-spin text-[#a855f7]" />
-        <span className="ml-2 text-muted-foreground">Loading editor...</span>
-      </div>
-    )
-  }
-
-  const { MDXEditor, headingsPlugin, listsPlugin, quotePlugin, markdownShortcutPlugin } = EditorModule
-
-  return (
-    <MDXEditor
-      className="prose prose-sm dark:prose-invert max-w-none min-h-[60vh] focus:outline-none"
-      contentEditable={!isLocked}
-      markdown={content}
-      onChange={onChange}
-      plugins={[
-        headingsPlugin(),
-        listsPlugin(),
-        quotePlugin(),
-        markdownShortcutPlugin(),
-      ]}
-    />
-  )
-}
 
 export function NoteEditor() {
   const currentUser = useAppStore((s) => s.currentUser)
@@ -70,8 +29,6 @@ export function NoteEditor() {
   const notes = useAppStore((s) => s.notes)
   const updateNoteContent = useAppStore((s) => s.updateNoteContent)
   const updateNoteTitle = useAppStore((s) => s.updateNoteTitle)
-  const setActiveCollaborators = useAppStore((s) => s.setActiveCollaborators)
-  const setLock = useAppStore((s) => s.setLock)
   const setView = useAppStore((s) => s.setView)
   const isEncryptedSession = useAppStore((s) => s.isEncryptedSession)
 
@@ -84,33 +41,6 @@ export function NoteEditor() {
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   const note = notes.find((n) => n.id === selectedNoteId)
-
-  // Wire collab socket hook
-  const collab = useCollabSocket({
-    documentType: 'note',
-    documentId: selectedNoteId || '',
-    userId: currentUser?.id || '',
-    userName: currentUser?.name || currentUser?.email || '',
-    avatar: currentUser?.image,
-    onContentUpdate: (newContent) => {
-      // When another user updates content, reload
-      setContent(newContent)
-      toast.info('Note updated by collaborator')
-    },
-  })
-
-  // Sync collab state to store
-  useEffect(() => {
-    setActiveCollaborators(collab.activeUsers.map(u => ({ userId: u.userId, userName: u.userName, avatar: u.avatar })))
-  }, [collab.activeUsers, setActiveCollaborators])
-
-  useEffect(() => {
-    setLock(collab.lockStatus.isLocked, collab.lockStatus.lockedByUser)
-  }, [collab.lockStatus.isLocked, collab.lockStatus.lockedByUser, setLock])
-
-  const isLocked = useAppStore((s) => s.isLocked)
-  const lockedByUser = useAppStore((s) => s.lockedByUser)
-  const activeCollaborators = useAppStore((s) => s.activeCollaborators)
 
   // Load note data & decrypt
   useEffect(() => {
@@ -166,14 +96,10 @@ export function NoteEditor() {
     }
   }, [selectedNoteId, title, content, isSaving, updateNoteContent, updateNoteTitle])
 
-  // Request lock when user starts editing, release when idle
   const handleContentChange = useCallback(
-    (newContent: string) => {
+    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+      const newContent = e.target.value
       setContent(newContent)
-      // Request lock if not locked by us
-      if (!collab.lockStatus.isLocked || collab.lockStatus.lockedByUser !== currentUser?.name) {
-        collab.requestLock()
-      }
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current)
       }
@@ -181,16 +107,13 @@ export function NoteEditor() {
         saveContent()
       }, 1500)
     },
-    [saveContent, collab, currentUser?.name]
+    [saveContent]
   )
 
   const handleTitleChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const newTitle = e.target.value
       setTitle(newTitle)
-      if (!collab.lockStatus.isLocked || collab.lockStatus.lockedByUser !== currentUser?.name) {
-        collab.requestLock()
-      }
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current)
       }
@@ -198,7 +121,7 @@ export function NoteEditor() {
         saveContent()
       }, 1500)
     },
-    [saveContent, collab, currentUser?.name]
+    [saveContent]
   )
 
   const handleDelete = async () => {
@@ -345,7 +268,6 @@ export function NoteEditor() {
             onChange={handleTitleChange}
             className="flex-1 min-w-0 border-0 focus-visible:ring-0 text-base sm:text-lg font-semibold px-1 h-auto py-1 bg-transparent"
             placeholder="Untitled Note"
-            disabled={isLocked}
           />
 
           <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
@@ -354,7 +276,7 @@ export function NoteEditor() {
               <Tooltip>
                 <TooltipTrigger asChild>
                   {isEncryptedSession ? (
-                    <ShieldCheck className="w-4 h-4 text-[#a855f7]" />
+                    <ShieldCheck className="w-4 h-4 text-[#059669]" />
                   ) : (
                     <ShieldAlert className="w-4 h-4 text-amber-500" />
                   )}
@@ -376,36 +298,10 @@ export function NoteEditor() {
               </motion.div>
             )}
 
-            {/* Collaboration indicator */}
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Badge variant="outline" className={`gap-1 text-[10px] sm:text-xs px-1.5 sm:px-2 ${collab.isConnected ? 'text-[#a855f7] border-purple-300 bg-purple-50 dark:bg-purple-950/30 dark:border-purple-800' : 'text-muted-foreground'}`}>
-                    <div className={`w-1.5 h-1.5 rounded-full ${collab.isConnected ? 'bg-[#a855f7] animate-pulse' : 'bg-muted-foreground'}`} />
-                    <span className="hidden sm:inline">{collab.isConnected ? 'Live' : 'Offline'}</span>
-                  </Badge>
-                </TooltipTrigger>
-                <TooltipContent>{collab.isConnected ? 'Real-time collaboration active' : 'Collaboration disconnected'}</TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-
-            {/* Collaborators (desktop only) */}
-            {activeCollaborators.length > 0 && (
-              <div className="hidden sm:flex -space-x-2">
-                {activeCollaborators.map((c) => (
-                  <Avatar key={c.userId} className="w-7 h-7 border-2 border-background">
-                    <AvatarFallback className="text-[10px] bg-purple-100 text-[#6d28d9] dark:bg-purple-950/40 dark:text-[#a855f7]">
-                      {getInitials(c.userName)}
-                    </AvatarFallback>
-                  </Avatar>
-                ))}
-              </div>
-            )}
-
             {/* Actions dropdown */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="icon" className="h-8 w-8 hover:bg-purple-50 dark:hover:bg-purple-950/30">
+                <Button variant="outline" size="icon" className="h-8 w-8 hover:bg-[#059669]/10 dark:hover:bg-[#059669]/20">
                   <MoreVertical className="w-4 h-4" />
                 </Button>
               </DropdownMenuTrigger>
@@ -438,37 +334,32 @@ export function NoteEditor() {
         </div>
       </header>
 
-      {/* Lock Banner */}
-      {isLocked && (
-        <motion.div
-          initial={{ height: 0, opacity: 0 }}
-          animate={{ height: 'auto', opacity: 1 }}
-          className="bg-amber-50 dark:bg-amber-950/20 border-b border-amber-200 dark:border-amber-800"
-        >
-          <div className="max-w-4xl mx-auto px-4 py-2 flex items-center gap-2 text-sm text-amber-800 dark:text-amber-200">
-            <Lock className="w-4 h-4" />
-            <span>
-              {lockedByUser === currentUser?.name
-                ? 'You are editing this note'
-                : `${lockedByUser} is currently editing — read-only mode`}
-            </span>
-          </div>
-        </motion.div>
-      )}
-
-      {/* Editor */}
+      {/* Editor Area */}
       <div className="flex-1 max-w-4xl mx-auto w-full px-4 py-6 bg-background">
         {initialLoad ? (
           <div className="flex items-center justify-center py-20">
-            <Loader2 className="w-6 h-6 animate-spin text-[#a855f7]" />
+            <Loader2 className="w-6 h-6 animate-spin text-[#059669]" />
             <span className="ml-2 text-muted-foreground">Loading note...</span>
           </div>
         ) : (
-          <LazyEditor
-            content={content}
-            onChange={handleContentChange}
-            isLocked={isLocked}
-          />
+          <div className="space-y-2">
+            {/* Toolbar hint */}
+            <div className="flex items-center gap-2 mb-3">
+              <p className="text-xs text-muted-foreground">
+                Start typing to edit. Content auto-saves every 1.5 seconds.
+              </p>
+              <Badge variant="secondary" className="text-[10px] font-normal">
+                {content.length} chars
+              </Badge>
+            </div>
+            {/* Textarea Editor */}
+            <textarea
+              value={content}
+              onChange={handleContentChange}
+              className="w-full min-h-[60vh] resize-y rounded-xl border border-border/50 bg-card/50 p-6 text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-[#059669]/20 focus:border-[#059669]/40 transition-all placeholder:text-muted-foreground/40 font-[inherit]"
+              placeholder="Start writing your note here...&#10;&#10;Supports plain text. You can use it for notes, ideas, journaling, and more."
+            />
+          </div>
         )}
       </div>
 
@@ -478,14 +369,14 @@ export function NoteEditor() {
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <History className="w-5 h-5 text-[#a855f7]" />
+              <History className="w-5 h-5 text-[#059669]" />
               Version History
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <Button
               size="sm"
-              className="w-full btn-gradient"
+              className="w-full bg-gradient-to-r from-[#059669] to-[#0d9488] text-white hover:from-[#059669]/90 hover:to-[#0d9488]/90"
               onClick={handleSaveVersion}
             >
               Save Current Version
@@ -495,7 +386,7 @@ export function NoteEditor() {
                 <p className="text-sm text-muted-foreground text-center py-8">No versions saved yet. Click &ldquo;Save Current Version&rdquo; to create a snapshot.</p>
               ) : (
                 versions.map((v) => (
-                  <div key={v.id} className="flex items-center gap-3 p-3 rounded-lg border border-border/50 hover:border-purple-300 transition-colors">
+                  <div key={v.id} className="flex items-center gap-3 p-3 rounded-lg border border-border/50 hover:border-[#059669]/30 transition-colors">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <Badge variant="secondary" className="text-xs">v{v.version}</Badge>
