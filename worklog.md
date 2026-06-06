@@ -199,3 +199,23 @@ Work Log:
 Stage Summary:
 - App fully functional end-to-end — issue was dev server had stopped, not a code bug
 - All core flows verified: auth, dashboard, note CRUD, todo CRUD with items, collaboration service
+---
+Task ID: fix-overflow
+Agent: main
+Task: Fix horizontal overflow on mobile viewports
+
+Work Log:
+- Added `overflow-x-hidden` to html and body in globals.css
+- Added `overflow-x-hidden` to root div in page.tsx
+- Fixed dashboard header: reduced gap-3→gap-2, logo 9→8, h-16→h-14, smaller avatar, icon-only logout, hidden Upgrade text on mobile, name hidden on mobile
+- Fixed note editor header: replaced 5 individual action buttons (Share/History/Pin/Archive/Delete) with single ⋯ dropdown menu using DropdownMenu component; added `min-w-0` to title input for truncation; hidden separator on mobile; compact padding `px-3 sm:px-4`; collaborator avatars hidden on mobile
+- Fixed todo list header: same dropdown menu pattern, compact padding, hidden separator on mobile
+- Verified on 320px viewport: scrollWidth = clientWidth = 320 (no overflow)
+- Verified on 375px viewport: scrollWidth = clientWidth = 375 (no overflow)
+- Verified note editor renders correctly with dropdown menu on mobile
+- Ran `bun run lint`: 0 errors, 0 warnings
+
+Stage Summary:
+- Horizontal overflow completely fixed across all viewports (320px, 375px, desktop)
+- Note editor and todo list actions consolidated into dropdown menus to save space
+- All header elements properly use shrink-0/min-w-0/truncate for responsive behavior

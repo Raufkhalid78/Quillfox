@@ -303,23 +303,23 @@ export function Dashboard() {
     <div className="min-h-screen bg-gradient-to-br from-emerald-50/40 via-white to-teal-50/40 dark:from-emerald-950/10 dark:via-background dark:to-teal-950/10">
       {/* Header */}
       <header className="sticky top-0 z-50 backdrop-blur-md bg-background/80 border-b border-border">
-        <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center">
-              <StickyNote className="w-5 h-5" />
+        <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0">
+              <StickyNote className="w-4 h-4" />
             </div>
-            <h1 className="text-xl font-bold tracking-tight">QuillFox</h1>
+            <h1 className="text-lg font-bold tracking-tight truncate">QuillFox</h1>
             {/* Encryption status badge */}
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
                   {isEncryptedSession ? (
-                    <Badge variant="secondary" className="gap-1 text-emerald-700 bg-emerald-50 border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-800 dark:text-emerald-400">
+                    <Badge variant="secondary" className="gap-1 text-emerald-700 bg-emerald-50 border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-800 dark:text-emerald-400 shrink-0">
                       <ShieldCheck className="w-3 h-3" />
                       <span className="hidden sm:inline">E2E</span>
                     </Badge>
                   ) : (
-                    <Badge variant="secondary" className="gap-1 text-amber-700 bg-amber-50 border-amber-200 dark:bg-amber-950/30 dark:border-amber-800 dark:text-amber-400">
+                    <Badge variant="secondary" className="gap-1 text-amber-700 bg-amber-50 border-amber-200 dark:bg-amber-950/30 dark:border-amber-800 dark:text-amber-400 shrink-0">
                       <ShieldAlert className="w-3 h-3" />
                       <span className="hidden sm:inline">No E2E</span>
                     </Badge>
@@ -332,7 +332,7 @@ export function Dashboard() {
             </TooltipProvider>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
             {/* Premium Upgrade */}
             <TooltipProvider>
               <Tooltip>
@@ -354,24 +354,23 @@ export function Dashboard() {
               variant="ghost"
               size="icon"
               onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-              className="h-9 w-9"
+              className="h-8 w-8"
             >
               {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </Button>
 
-            <Avatar className="h-8 w-8">
-              <AvatarFallback className="bg-emerald-100 text-emerald-700 text-xs font-medium">
+            <Avatar className="h-7 w-7">
+              <AvatarFallback className="bg-emerald-100 text-emerald-700 text-[10px] font-medium">
                 {getInitials(currentUser.name)}
               </AvatarFallback>
             </Avatar>
 
-            <span className="text-sm font-medium hidden sm:inline max-w-[120px] truncate">
+            <span className="text-sm font-medium hidden sm:inline max-w-[100px] truncate">
               {currentUser.name || currentUser.email}
             </span>
 
-            <Button variant="ghost" size="sm" onClick={logout} className="text-muted-foreground hover:text-destructive">
-              <LogOut className="w-4 h-4 mr-1.5" />
-              <span className="hidden sm:inline">Logout</span>
+            <Button variant="ghost" size="icon" onClick={logout} className="h-8 w-8 text-muted-foreground hover:text-destructive">
+              <LogOut className="w-4 h-4" />
             </Button>
           </div>
         </div>

@@ -12,7 +12,7 @@ function AppContent() {
   const currentView = useAppStore((s) => s.currentView)
 
   return (
-    <div className="min-h-screen flex flex-col bg-background text-foreground">
+    <div className="min-h-screen flex flex-col bg-background text-foreground overflow-x-hidden">
       <main className="flex-1">
         {currentView === 'auth' && <AuthPage />}
         {currentView === 'dashboard' && <Dashboard />}

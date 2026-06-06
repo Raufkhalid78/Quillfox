@@ -11,8 +11,15 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { toast } from 'sonner'
-import { ArrowLeft, Plus, Trash2, GripVertical, Loader2, Lock, ShieldCheck, ShieldAlert, Pin, Archive, ArchiveRestore, Share2 } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, GripVertical, Loader2, Lock, ShieldCheck, ShieldAlert, Pin, Archive, ArchiveRestore, Share2, MoreVertical } from 'lucide-react'
 
 export function TodoList() {
   const currentUser = useAppStore((s) => s.currentUser)
@@ -326,27 +333,27 @@ export function TodoList() {
     <div className="min-h-screen flex flex-col bg-background">
       {/* Header */}
       <header className="sticky top-0 z-50 backdrop-blur-md bg-background/80 border-b border-border">
-        <div className="max-w-3xl mx-auto px-4 h-14 flex items-center gap-3">
+        <div className="max-w-3xl mx-auto px-3 sm:px-4 h-14 flex items-center gap-2">
           <Button
             variant="ghost"
             size="icon"
             onClick={() => setView('dashboard')}
-            className="shrink-0"
+            className="shrink-0 h-8 w-8"
           >
             <ArrowLeft className="w-5 h-5" />
           </Button>
 
-          <Separator orientation="vertical" className="h-6" />
+          <Separator orientation="vertical" className="h-6 hidden sm:block" />
 
           <Input
             value={title}
             onChange={handleTitleChange}
-            className="flex-1 border-0 focus-visible:ring-0 text-lg font-semibold px-1 h-auto py-1 bg-transparent"
+            className="flex-1 min-w-0 border-0 focus-visible:ring-0 text-base sm:text-lg font-semibold px-1 h-auto py-1 bg-transparent"
             placeholder="Untitled Todo List"
             disabled={isLocked}
           />
 
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
             {/* Encryption indicator */}
             <TooltipProvider>
               <Tooltip>
@@ -370,7 +377,7 @@ export function TodoList() {
                 className="flex items-center text-xs text-muted-foreground"
               >
                 <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                Saving
+                <span className="hidden sm:inline">Saving</span>
               </motion.div>
             )}
 
@@ -378,38 +385,43 @@ export function TodoList() {
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Badge variant="outline" className={`gap-1 text-xs ${collab.isConnected ? 'text-emerald-600 border-emerald-300 bg-emerald-50' : 'text-muted-foreground'}`}>
+                  <Badge variant="outline" className={`gap-1 text-[10px] sm:text-xs px-1.5 sm:px-2 ${collab.isConnected ? 'text-emerald-600 border-emerald-300 bg-emerald-50' : 'text-muted-foreground'}`}>
                     <div className={`w-1.5 h-1.5 rounded-full ${collab.isConnected ? 'bg-emerald-500 animate-pulse' : 'bg-muted-foreground'}`} />
-                    {collab.isConnected ? 'Live' : 'Offline'}
+                    <span className="hidden sm:inline">{collab.isConnected ? 'Live' : 'Offline'}</span>
                   </Badge>
                 </TooltipTrigger>
                 <TooltipContent>{collab.isConnected ? 'Real-time collaboration active' : 'Collaboration disconnected'}</TooltipContent>
               </Tooltip>
             </TooltipProvider>
-            <Button variant="outline" size="icon" className="h-8 w-8" onClick={handleShare} title="Share">
-              <Share2 className="w-4 h-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className={`h-8 w-8 ${todoList?.isPinned ? 'text-amber-500' : 'text-muted-foreground'}`}
-              onClick={handleTogglePin}
-              title={todoList?.isPinned ? 'Unpin' : 'Pin'}
-            >
-              <Pin className={`w-4 h-4 ${todoList?.isPinned ? 'fill-current' : ''}`} />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 text-muted-foreground"
-              onClick={handleToggleArchive}
-              title={todoList?.isArchived ? 'Restore from Archive' : 'Archive'}
-            >
-              {todoList?.isArchived ? <ArchiveRestore className="w-4 h-4" /> : <Archive className="w-4 h-4" />}
-            </Button>
-            <Button variant="outline" size="sm" onClick={handleDelete} className="text-destructive hover:text-destructive">
-              Delete
-            </Button>
+
+            {/* Actions dropdown */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="icon" className="h-8 w-8">
+                  <MoreVertical className="w-4 h-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem onClick={handleShare}>
+                  <Share2 className="w-4 h-4 mr-2" />
+                  Share
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleTogglePin}>
+                  <Pin className={`w-4 h-4 mr-2 ${todoList?.isPinned ? 'fill-current' : ''}`} />
+                  {todoList?.isPinned ? 'Unpin' : 'Pin'}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleToggleArchive}>
+                  {todoList?.isArchived ? <ArchiveRestore className="w-4 h-4 mr-2" /> : <Archive className="w-4 h-4 mr-2" />}
+                  {todoList?.isArchived ? 'Restore from Archive' : 'Archive'}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleDelete} className="text-destructive focus:text-destructive">
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </header>
