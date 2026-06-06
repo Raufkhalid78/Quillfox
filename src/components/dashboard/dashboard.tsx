@@ -67,7 +67,7 @@ export function Dashboard() {
   const [newTodoTitle, setNewTodoTitle] = useState('')
   const [newWsTitle, setNewWsTitle] = useState('')
   const [newWsDescription, setNewWsDescription] = useState('')
-  const [newWsColor, setNewWsColor] = useState('#059669')
+  const [newWsColor, setNewWsColor] = useState('#7c3aed')
   const [selectedWs, setSelectedWs] = useState<WorkspaceData | null>(null)
   const [wsDetailOpen, setWsDetailOpen] = useState(false)
   const [wsMembers, setWsMembers] = useState<Array<{ id: string; userId: string; role: string; joinedAt: string; user: { id: string; name: string | null; email: string; image: string | null } }>>([])
@@ -211,7 +211,7 @@ export function Dashboard() {
         setDialogOpen(false)
         setNewWsTitle('')
         setNewWsDescription('')
-        setNewWsColor('#059669')
+        setNewWsColor('#7c3aed')
         toast.success('Workspace created')
       }
     } catch {
@@ -300,12 +300,12 @@ export function Dashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-emerald-50/40 via-white to-teal-50/40 dark:from-emerald-950/10 dark:via-background dark:to-teal-950/10">
+    <div className="min-h-screen bg-gradient-mesh-dash-light dark:bg-gradient-mesh-dash-dark">
       {/* Header */}
-      <header className="sticky top-0 z-50 backdrop-blur-md bg-background/80 border-b border-border">
+      <header className="sticky top-0 z-50 glass-header">
         <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
           <div className="flex items-center gap-2 min-w-0">
-            <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0">
+            <div className="w-8 h-8 rounded-xl bg-gradient-purple text-white flex items-center justify-center shrink-0">
               <StickyNote className="w-4 h-4" />
             </div>
             <h1 className="text-lg font-bold tracking-tight truncate">QuillFox</h1>
@@ -314,12 +314,12 @@ export function Dashboard() {
               <Tooltip>
                 <TooltipTrigger asChild>
                   {isEncryptedSession ? (
-                    <Badge variant="secondary" className="gap-1 text-emerald-700 bg-emerald-50 border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-800 dark:text-emerald-400 shrink-0">
+                    <Badge variant="secondary" className="gap-1 text-[#6d28d9] dark:text-[#a855f7] bg-purple-50 border-purple-200 dark:bg-purple-950/30 dark:border-purple-800 dark:text-[#a855f7] shrink-0">
                       <ShieldCheck className="w-3 h-3" />
                       <span className="hidden sm:inline">E2E</span>
                     </Badge>
                   ) : (
-                    <Badge variant="secondary" className="gap-1 text-amber-700 bg-amber-50 border-amber-200 dark:bg-amber-950/30 dark:border-amber-800 dark:text-amber-400 shrink-0">
+                    <Badge variant="secondary" className="gap-1 text-[#f97316] bg-orange-50 border-orange-200 dark:bg-orange-950/20 dark:border-orange-800 dark:text-[#fb923c] shrink-0">
                       <ShieldAlert className="w-3 h-3" />
                       <span className="hidden sm:inline">No E2E</span>
                     </Badge>
@@ -340,7 +340,7 @@ export function Dashboard() {
                   <Button
                     variant="outline"
                     size="sm"
-                    className="gap-1.5 text-amber-600 border-amber-300 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-950/40"
+                    className="gap-1.5 text-[#f97316] border-orange-200 bg-orange-50 dark:bg-orange-950/20 dark:border-orange-800 dark:text-[#fb923c] hover:bg-orange-100 dark:hover:bg-orange-950/40"
                     onClick={() => setPricingOpen(true)}
                   >
                     <Crown className="w-3.5 h-3.5" />
@@ -360,7 +360,7 @@ export function Dashboard() {
             </Button>
 
             <Avatar className="h-7 w-7">
-              <AvatarFallback className="bg-emerald-100 text-emerald-700 text-[10px] font-medium">
+              <AvatarFallback className="bg-purple-100 text-[#6d28d9] dark:bg-purple-950/30 dark:text-[#a855f7] text-[10px] font-medium">
                 {getInitials(currentUser.name)}
               </AvatarFallback>
             </Avatar>
@@ -379,32 +379,48 @@ export function Dashboard() {
       {/* Main Content */}
       <div className="max-w-6xl mx-auto px-4 py-6">
         {/* Quick Stats */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
+        <motion.div
+          className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8"
+          initial="hidden"
+          animate="visible"
+          variants={{
+            hidden: {},
+            visible: { transition: { staggerChildren: 0.08 } },
+          }}
+        >
           {[
-            { label: 'Total Notes', value: notes.filter((n) => !n.isArchived).length, icon: FileText, color: 'text-emerald-600' },
-            { label: 'Todo Lists', value: todoLists.filter((t) => !t.isArchived).length, icon: ListTodo, color: 'text-teal-600' },
-            { label: 'Workspaces', value: workspaces.length, icon: Users, color: 'text-amber-600' },
-            { label: 'Completed', value: todoLists.reduce((acc, t) => acc + t.items.filter((i) => i.completed).length, 0), icon: Sparkles, color: 'text-violet-600' },
+            { label: 'Total Notes', value: notes.filter((n) => !n.isArchived).length, icon: FileText, color: 'text-[#6d28d9] dark:text-[#a855f7]' },
+            { label: 'Todo Lists', value: todoLists.filter((t) => !t.isArchived).length, icon: ListTodo, color: 'text-[#f97316] dark:text-[#fb923c]' },
+            { label: 'Workspaces', value: workspaces.length, icon: Users, color: 'text-[#f97316] dark:text-[#fb923c]' },
+            { label: 'Completed', value: todoLists.reduce((acc, t) => acc + t.items.filter((i) => i.completed).length, 0), icon: Sparkles, color: 'text-[#f97316] dark:text-[#fb923c]' },
           ].map((stat) => (
-            <Card key={stat.label} className="border-border/50">
-              <CardContent className="p-4 flex items-center gap-3">
-                <div className={`p-2 rounded-lg bg-muted ${stat.color}`}>
-                  <stat.icon className="w-4 h-4" />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold">{stat.value}</p>
-                  <p className="text-xs text-muted-foreground">{stat.label}</p>
-                </div>
-              </CardContent>
-            </Card>
+            <motion.div
+              key={stat.label}
+              variants={{
+                hidden: { opacity: 0, y: 15 },
+                visible: { opacity: 1, y: 0 },
+              }}
+            >
+              <Card className="glass-card card-lift">
+                <CardContent className="p-4 flex items-center gap-3">
+                  <div className={`p-2 rounded-lg bg-purple-100/60 dark:bg-purple-950/40 ${stat.color}`}>
+                    <stat.icon className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold">{stat.value}</p>
+                    <p className="text-xs text-muted-foreground">{stat.label}</p>
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
           ))}
-        </div>
+        </motion.div>
 
         {/* Workspaces */}
         {workspaces.length > 0 && (
           <section className="mb-8">
             <div className="flex items-center gap-2 mb-4">
-              <LayoutGrid className="w-5 h-5 text-emerald-600" />
+              <LayoutGrid className="w-5 h-5 text-[#6d28d9] dark:text-[#a855f7]" />
               <h2 className="text-lg font-semibold">Workspaces</h2>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -415,7 +431,7 @@ export function Dashboard() {
                   whileTap={{ scale: 0.98 }}
                   onClick={() => handleOpenWsDetail(ws)}
                 >
-                  <Card className="overflow-hidden border-border/50 hover:shadow-md transition-shadow cursor-pointer">
+                  <Card className="overflow-hidden card-lift cursor-pointer">
                     <div className="h-2" style={{ backgroundColor: ws.color }} />
                     <CardHeader className="pb-2">
                       <CardTitle className="text-base">{ws.title}</CardTitle>
@@ -441,9 +457,10 @@ export function Dashboard() {
         )}
 
         {isLoading ? (
-          <div className="flex items-center justify-center py-20">
-            <Loader2 className="w-6 h-6 animate-spin text-emerald-600" />
-            <span className="ml-2 text-muted-foreground">Loading...</span>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="skeleton-shimmer rounded-xl h-32" />
+            ))}
           </div>
         ) : (
           <>
@@ -451,7 +468,7 @@ export function Dashboard() {
             <section className="mb-8">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
-                  <FileText className="w-5 h-5 text-emerald-600" />
+                  <FileText className="w-5 h-5 text-[#6d28d9] dark:text-[#a855f7]" />
                   <h2 className="text-lg font-semibold">Recent Notes</h2>
                 </div>
                 <Badge variant="secondary" className="text-xs">
@@ -480,14 +497,14 @@ export function Dashboard() {
                           whileTap={{ scale: 0.98 }}
                           onClick={() => selectNote(note.id)}
                         >
-                          <Card className="cursor-pointer border-border/50 hover:shadow-md transition-shadow h-full">
+                          <Card className="cursor-pointer glass-card card-lift h-full">
                             <CardHeader className="pb-2">
                               <div className="flex items-center justify-between">
                                 <CardTitle className="text-base line-clamp-1">
                                   {decrypted?.title || note.title}
                                 </CardTitle>
                                 {isEncryptedSession && (
-                                  <ShieldCheck className="w-3 h-3 text-emerald-500 shrink-0" />
+                                  <ShieldCheck className="w-3 h-3 text-[#a855f7] shrink-0" />
                                 )}
                               </div>
                             </CardHeader>
@@ -513,7 +530,7 @@ export function Dashboard() {
             <section className="mb-8">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
-                  <ListTodo className="w-5 h-5 text-teal-600" />
+                  <ListTodo className="w-5 h-5 text-[#f97316] dark:text-[#fb923c]" />
                   <h2 className="text-lg font-semibold">Recent Todo Lists</h2>
                 </div>
                 <Badge variant="secondary" className="text-xs">
@@ -545,12 +562,12 @@ export function Dashboard() {
                           whileTap={{ scale: 0.98 }}
                           onClick={() => selectTodo(todo.id)}
                         >
-                          <Card className="cursor-pointer border-border/50 hover:shadow-md transition-shadow h-full">
+                          <Card className="cursor-pointer glass-card card-lift h-full">
                             <CardHeader className="pb-2">
                               <div className="flex items-center justify-between">
                                 <CardTitle className="text-base line-clamp-1">{decryptedTitle}</CardTitle>
                                 {isEncryptedSession && (
-                                  <ShieldCheck className="w-3 h-3 text-emerald-500 shrink-0" />
+                                  <ShieldCheck className="w-3 h-3 text-[#a855f7] shrink-0" />
                                 )}
                               </div>
                             </CardHeader>
@@ -559,11 +576,11 @@ export function Dashboard() {
                                 <span className="text-muted-foreground">
                                   {completed}/{total} completed
                                 </span>
-                                <span className="text-emerald-600 font-medium">{Math.round(progress)}%</span>
+                                <span className="text-[#6d28d9] dark:text-[#a855f7] font-medium">{Math.round(progress)}%</span>
                               </div>
                               <div className="w-full bg-muted rounded-full h-2">
                                 <motion.div
-                                  className="bg-emerald-600 h-2 rounded-full"
+                                  className="progress-gradient h-2 rounded-full"
                                   initial={{ width: 0 }}
                                   animate={{ width: `${progress}%` }}
                                   transition={{ duration: 0.5, delay: index * 0.05 }}
@@ -596,7 +613,7 @@ export function Dashboard() {
           >
             <Button
               size="lg"
-              className="rounded-full w-14 h-14 shadow-lg bg-emerald-600 hover:bg-emerald-700"
+              className="rounded-full w-14 h-14 fab-gradient ring-2 ring-[#a855f7]/30 ring-offset-2 ring-offset-background"
             >
               <Plus className="w-6 h-6" />
             </Button>
@@ -609,10 +626,10 @@ export function Dashboard() {
           </DialogHeader>
           <div className="space-y-4 mt-4">
             {/* New Note */}
-            <Card className="cursor-pointer border-border/50 hover:border-emerald-300 hover:shadow-md transition-all" onClick={() => { /* Focus note input */ }}>
+            <Card className="cursor-pointer glass-card hover:border-purple-300 transition-all" onClick={() => { /* Focus note input */ }}>
               <CardContent className="p-4">
                 <div className="flex items-center gap-3 mb-3">
-                  <div className="p-2 rounded-lg bg-emerald-100 text-emerald-700">
+                  <div className="p-2 rounded-lg bg-purple-100 text-[#6d28d9] dark:bg-purple-950/30 dark:text-[#a855f7]">
                     <StickyNote className="w-5 h-5" />
                   </div>
                   <h3 className="font-medium">New Note</h3>
@@ -634,7 +651,7 @@ export function Dashboard() {
                   />
                   <Button
                     size="sm"
-                    className="w-full bg-emerald-600 hover:bg-emerald-700"
+                    className="w-full btn-gradient"
                     onClick={(e) => {
                       e.stopPropagation()
                       handleCreateNote()
@@ -647,10 +664,10 @@ export function Dashboard() {
             </Card>
 
             {/* New Todo */}
-            <Card className="cursor-pointer border-border/50 hover:border-teal-300 hover:shadow-md transition-all">
+            <Card className="cursor-pointer glass-card hover:border-orange-300 transition-all">
               <CardContent className="p-4">
                 <div className="flex items-center gap-3 mb-3">
-                  <div className="p-2 rounded-lg bg-teal-100 text-teal-700">
+                  <div className="p-2 rounded-lg bg-orange-100 text-[#f97316] dark:bg-orange-950/30 dark:text-[#fb923c]">
                     <CheckSquare className="w-5 h-5" />
                   </div>
                   <h3 className="font-medium">New Todo List</h3>
@@ -672,7 +689,7 @@ export function Dashboard() {
                   />
                   <Button
                     size="sm"
-                    className="w-full bg-teal-600 hover:bg-teal-700"
+                    className="w-full btn-gradient"
                     onClick={(e) => {
                       e.stopPropagation()
                       handleCreateTodo()
@@ -685,10 +702,10 @@ export function Dashboard() {
             </Card>
 
             {/* New Workspace */}
-            <Card className="cursor-pointer border-border/50 hover:border-emerald-300 hover:shadow-md transition-all">
+            <Card className="cursor-pointer glass-card hover:border-purple-300 transition-all">
               <CardContent className="p-4">
                 <div className="flex items-center gap-3 mb-3">
-                  <div className="p-2 rounded-lg bg-emerald-100 text-emerald-700">
+                  <div className="p-2 rounded-lg bg-purple-100 text-[#6d28d9] dark:bg-purple-950/30 dark:text-[#a855f7]">
                     <FolderOpen className="w-5 h-5" />
                   </div>
                   <h3 className="font-medium">New Workspace</h3>
@@ -732,7 +749,7 @@ export function Dashboard() {
                   </div>
                   <Button
                     size="sm"
-                    className="w-full bg-emerald-600 hover:bg-emerald-700"
+                    className="w-full btn-gradient"
                     onClick={(e) => {
                       e.stopPropagation()
                       handleCreateWorkspace()
@@ -760,21 +777,21 @@ export function Dashboard() {
           {selectedWs && (
             <div className="space-y-4">
               <div className="grid grid-cols-3 gap-3">
-                <Card className="border-border/50">
+                <Card className="glass-card">
                   <CardContent className="p-3 text-center">
-                    <p className="text-2xl font-bold text-emerald-600">{selectedWs._count.notes}</p>
+                    <p className="text-2xl font-bold text-gradient-purple">{selectedWs._count.notes}</p>
                     <p className="text-xs text-muted-foreground">Notes</p>
                   </CardContent>
                 </Card>
-                <Card className="border-border/50">
+                <Card className="glass-card">
                   <CardContent className="p-3 text-center">
-                    <p className="text-2xl font-bold text-teal-600">{selectedWs._count.todoLists}</p>
+                    <p className="text-2xl font-bold text-gradient-purple">{selectedWs._count.todoLists}</p>
                     <p className="text-xs text-muted-foreground">Todo Lists</p>
                   </CardContent>
                 </Card>
-                <Card className="border-border/50">
+                <Card className="glass-card">
                   <CardContent className="p-3 text-center">
-                    <p className="text-2xl font-bold text-amber-600">{selectedWs._count.notes + selectedWs._count.todoLists}</p>
+                    <p className="text-2xl font-bold text-gradient-purple">{selectedWs._count.notes + selectedWs._count.todoLists}</p>
                     <p className="text-xs text-muted-foreground">Total Items</p>
                   </CardContent>
                 </Card>
@@ -786,7 +803,7 @@ export function Dashboard() {
               {/* Invite Member */}
               <div className="space-y-2">
                 <div className="flex items-center gap-2 text-sm font-medium">
-                  <UserPlus className="w-4 h-4 text-emerald-600" />
+                  <UserPlus className="w-4 h-4 text-[#6d28d9] dark:text-[#a855f7]" />
                   Invite Members
                 </div>
                 <div className="flex gap-2">
@@ -801,7 +818,7 @@ export function Dashboard() {
                   />
                   <Button
                     size="sm"
-                    className="bg-emerald-600 hover:bg-emerald-700"
+                    className="btn-gradient"
                     onClick={handleInviteMember}
                     disabled={isInviting || !inviteEmail.trim()}
                   >
@@ -814,14 +831,14 @@ export function Dashboard() {
               {wsMembers.length > 0 && (
                 <div className="space-y-2">
                   <div className="flex items-center gap-2 text-sm font-medium">
-                    <Users className="w-4 h-4 text-emerald-600" />
+                    <Users className="w-4 h-4 text-[#6d28d9] dark:text-[#a855f7]" />
                     Members ({wsMembers.length})
                   </div>
                   <div className="max-h-48 overflow-y-auto space-y-2">
                     {wsMembers.map((member) => (
                       <div key={member.id} className="flex items-center gap-3 p-2 rounded-lg bg-muted/50">
                         <Avatar className="h-7 w-7">
-                          <AvatarFallback className="text-[10px] bg-emerald-100 text-emerald-700">
+                          <AvatarFallback className="text-[10px] bg-purple-100 text-[#6d28d9] dark:bg-purple-950/30 dark:text-[#a855f7]">
                             {getInitials(member.user.name)}
                           </AvatarFallback>
                         </Avatar>
@@ -894,14 +911,14 @@ export function Dashboard() {
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Crown className="w-5 h-5 text-amber-500" />
+              <Crown className="w-5 h-5 text-[#f97316]" />
               Choose Your Plan
             </DialogTitle>
             <DialogDescription>Unlock the full power of QuillFox</DialogDescription>
           </DialogHeader>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
             {/* Free Plan */}
-            <Card className="border-border/50">
+            <Card className="glass-card">
               <CardHeader className="pb-2">
                 <CardTitle className="text-base">Free</CardTitle>
                 <p className="text-xs text-muted-foreground">For individuals</p>
@@ -909,22 +926,22 @@ export function Dashboard() {
               <CardContent className="space-y-3">
                 <p className="text-2xl font-bold">$0<span className="text-sm font-normal text-muted-foreground">/mo</span></p>
                 <div className="space-y-2 text-xs">
-                  <div className="flex items-center gap-2"><Check className="w-3 h-3 text-emerald-500" /> Unlimited local notes</div>
-                  <div className="flex items-center gap-2"><Check className="w-3 h-3 text-emerald-500" /> Unlimited todo lists</div>
-                  <div className="flex items-center gap-2"><Check className="w-3 h-3 text-emerald-500" /> Sync up to 2 devices</div>
-                  <div className="flex items-center gap-2"><Check className="w-3 h-3 text-emerald-500" /> Share with 1 person</div>
-                  <div className="flex items-center gap-2"><Check className="w-3 h-3 text-emerald-500" /> End-to-end encryption</div>
+                  <div className="flex items-center gap-2"><Check className="w-3 h-3 text-[#a855f7]" /> Unlimited local notes</div>
+                  <div className="flex items-center gap-2"><Check className="w-3 h-3 text-[#a855f7]" /> Unlimited todo lists</div>
+                  <div className="flex items-center gap-2"><Check className="w-3 h-3 text-[#a855f7]" /> Sync up to 2 devices</div>
+                  <div className="flex items-center gap-2"><Check className="w-3 h-3 text-[#a855f7]" /> Share with 1 person</div>
+                  <div className="flex items-center gap-2"><Check className="w-3 h-3 text-[#a855f7]" /> End-to-end encryption</div>
                 </div>
                 <Button variant="outline" size="sm" className="w-full" disabled>Current Plan</Button>
               </CardContent>
             </Card>
 
             {/* Premium Plan */}
-            <Card className="border-amber-300 dark:border-amber-800 relative overflow-hidden">
-              <div className="absolute top-0 right-0 bg-amber-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-bl-lg">POPULAR</div>
+            <Card className="border-[#f97316] dark:border-[#ea580c] relative overflow-hidden gradient-border">
+              <div className="absolute top-0 right-0 bg-[#f97316] text-white text-[10px] font-bold px-2 py-0.5 rounded-bl-lg">POPULAR</div>
               <CardHeader className="pb-2">
                 <CardTitle className="text-base flex items-center gap-1.5">
-                  <Star className="w-4 h-4 text-amber-500" />
+                  <Star className="w-4 h-4 text-[#f97316]" />
                   Premium
                 </CardTitle>
                 <p className="text-xs text-muted-foreground">For teams & power users</p>
@@ -932,14 +949,14 @@ export function Dashboard() {
               <CardContent className="space-y-3">
                 <p className="text-2xl font-bold">$2.99<span className="text-sm font-normal text-muted-foreground">/mo</span></p>
                 <div className="space-y-2 text-xs">
-                  <div className="flex items-center gap-2"><Check className="w-3 h-3 text-emerald-500" /> Everything in Free</div>
-                  <div className="flex items-center gap-2"><Check className="w-3 h-3 text-emerald-500" /> Unlimited collaborators</div>
-                  <div className="flex items-center gap-2"><Check className="w-3 h-3 text-emerald-500" /> Unlimited device sync</div>
-                  <div className="flex items-center gap-2"><Check className="w-3 h-3 text-emerald-500" /> Version history</div>
-                  <div className="flex items-center gap-2"><Check className="w-3 h-3 text-emerald-500" /> Custom themes</div>
-                  <div className="flex items-center gap-2"><Check className="w-3 h-3 text-emerald-500" /> Ad-free experience</div>
+                  <div className="flex items-center gap-2"><Check className="w-3 h-3 text-[#a855f7]" /> Everything in Free</div>
+                  <div className="flex items-center gap-2"><Check className="w-3 h-3 text-[#a855f7]" /> Unlimited collaborators</div>
+                  <div className="flex items-center gap-2"><Check className="w-3 h-3 text-[#a855f7]" /> Unlimited device sync</div>
+                  <div className="flex items-center gap-2"><Check className="w-3 h-3 text-[#a855f7]" /> Version history</div>
+                  <div className="flex items-center gap-2"><Check className="w-3 h-3 text-[#a855f7]" /> Custom themes</div>
+                  <div className="flex items-center gap-2"><Check className="w-3 h-3 text-[#a855f7]" /> Ad-free experience</div>
                 </div>
-                <Button size="sm" className="w-full bg-amber-500 hover:bg-amber-600" onClick={() => toast.info('Premium subscription coming soon!')}>
+                <Button size="sm" className="w-full bg-[#f97316] hover:bg-[#ea580c]" onClick={() => toast.info('Premium subscription coming soon!')}>
                   Upgrade Now
                 </Button>
               </CardContent>

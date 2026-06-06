@@ -332,16 +332,18 @@ export function TodoList() {
   return (
     <div className="min-h-screen flex flex-col bg-background">
       {/* Header */}
-      <header className="sticky top-0 z-50 backdrop-blur-md bg-background/80 border-b border-border">
+      <header className="sticky top-0 z-50 glass-header">
         <div className="max-w-3xl mx-auto px-3 sm:px-4 h-14 flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setView('dashboard')}
-            className="shrink-0 h-8 w-8"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </Button>
+          <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setView('dashboard')}
+              className="shrink-0 h-8 w-8"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </Button>
+          </motion.div>
 
           <Separator orientation="vertical" className="h-6 hidden sm:block" />
 
@@ -359,7 +361,7 @@ export function TodoList() {
               <Tooltip>
                 <TooltipTrigger asChild>
                   {isEncryptedSession ? (
-                    <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                    <ShieldCheck className="w-4 h-4 text-[#a855f7]" />
                   ) : (
                     <ShieldAlert className="w-4 h-4 text-amber-500" />
                   )}
@@ -376,7 +378,7 @@ export function TodoList() {
                 animate={{ opacity: 1 }}
                 className="flex items-center text-xs text-muted-foreground"
               >
-                <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                <Loader2 className="w-3 h-3 mr-1 animate-spin text-[#a855f7]" />
                 <span className="hidden sm:inline">Saving</span>
               </motion.div>
             )}
@@ -385,7 +387,7 @@ export function TodoList() {
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Badge variant="outline" className={`gap-1 text-[10px] sm:text-xs px-1.5 sm:px-2 ${collab.isConnected ? 'text-emerald-600 border-emerald-300 bg-emerald-50' : 'text-muted-foreground'}`}>
+                  <Badge variant="outline" className={`gap-1 text-[10px] sm:text-xs px-1.5 sm:px-2 ${collab.isConnected ? 'text-[#a855f7] border-purple-300 bg-purple-50 dark:bg-purple-950/30 dark:border-purple-800' : 'text-muted-foreground'}`}>
                     <div className={`w-1.5 h-1.5 rounded-full ${collab.isConnected ? 'bg-emerald-500 animate-pulse' : 'bg-muted-foreground'}`} />
                     <span className="hidden sm:inline">{collab.isConnected ? 'Live' : 'Offline'}</span>
                   </Badge>
@@ -397,7 +399,7 @@ export function TodoList() {
             {/* Actions dropdown */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="icon" className="h-8 w-8">
+                <Button variant="outline" size="icon" className="h-8 w-8 hover:bg-purple-50 dark:hover:bg-purple-950/30">
                   <MoreVertical className="w-4 h-4" />
                 </Button>
               </DropdownMenuTrigger>
@@ -450,11 +452,11 @@ export function TodoList() {
           <span className="text-sm font-medium">
             {completedCount}/{totalCount} completed
           </span>
-          <span className="text-sm font-bold text-emerald-600">{progress}%</span>
+          <span className="text-sm text-gradient-purple font-bold">{progress}%</span>
         </div>
-        <div className="w-full bg-muted rounded-full h-3 overflow-hidden">
+        <div className="w-full bg-muted/60 rounded-full h-3 shadow-inner overflow-hidden">
           <motion.div
-            className="bg-emerald-600 h-3 rounded-full"
+            className="progress-gradient h-3 rounded-full"
             initial={{ width: 0 }}
             animate={{ width: `${progress}%` }}
             transition={{ duration: 0.5, ease: 'easeOut' }}
@@ -479,7 +481,7 @@ export function TodoList() {
                 onDragOver={(e) => handleDragOver(e as unknown as React.DragEvent, index)}
                 onDrop={(e) => handleDrop(e as unknown as React.DragEvent, index)}
                 onDragEnd={handleDragEnd}
-                className={`group flex items-center gap-3 p-3 rounded-xl border border-border/50 hover:border-emerald-200 dark:hover:border-emerald-800 transition-all ${
+                className={`group flex items-center gap-3 p-3 rounded-xl border border-border/50 hover:border-purple-300 dark:hover:border-purple-800 transition-all ${
                   draggedId === item.id ? 'opacity-50 scale-95' : ''
                 } ${item.completed ? 'bg-muted/50' : 'bg-card'}`}
               >
@@ -493,7 +495,7 @@ export function TodoList() {
                   checked={item.completed}
                   onCheckedChange={() => handleToggle(item.id)}
                   disabled={isLocked}
-                  className="shrink-0 data-[state=checked]:bg-emerald-600 data-[state=checked]:border-emerald-600"
+                  className="shrink-0 data-[state=checked]:bg-[#6d28d9] data-[state=checked]:border-[#6d28d9]"
                 />
 
                 {/* Title */}
@@ -549,7 +551,7 @@ export function TodoList() {
                 size="icon"
                 onClick={handleAddItem}
                 disabled={!newItemText.trim()}
-                className="shrink-0 text-emerald-600 hover:text-emerald-700"
+                className="shrink-0 text-[#a855f7] hover:text-[#6d28d9]"
               >
                 <Plus className="w-5 h-5" />
               </Button>

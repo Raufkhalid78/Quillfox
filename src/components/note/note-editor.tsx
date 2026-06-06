@@ -39,7 +39,7 @@ function LazyEditor({ content, onChange, isLocked }: { content: string; onChange
   if (!EditorModule) {
     return (
       <div className="flex items-center justify-center py-20">
-        <Loader2 className="w-6 h-6 animate-spin text-emerald-600" />
+        <Loader2 className="w-6 h-6 animate-spin text-[#a855f7]" />
         <span className="ml-2 text-muted-foreground">Loading editor...</span>
       </div>
     )
@@ -319,16 +319,18 @@ export function NoteEditor() {
   return (
     <div className="min-h-screen flex flex-col bg-background">
       {/* Header */}
-      <header className="sticky top-0 z-50 backdrop-blur-md bg-background/80 border-b border-border">
+      <header className="sticky top-0 z-50 glass-header">
         <div className="max-w-4xl mx-auto px-3 sm:px-4 h-14 flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setView('dashboard')}
-            className="shrink-0 h-8 w-8"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </Button>
+          <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setView('dashboard')}
+              className="shrink-0 h-8 w-8"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </Button>
+          </motion.div>
 
           <Separator orientation="vertical" className="h-6 hidden sm:block" />
 
@@ -346,7 +348,7 @@ export function NoteEditor() {
               <Tooltip>
                 <TooltipTrigger asChild>
                   {isEncryptedSession ? (
-                    <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                    <ShieldCheck className="w-4 h-4 text-[#a855f7]" />
                   ) : (
                     <ShieldAlert className="w-4 h-4 text-amber-500" />
                   )}
@@ -372,8 +374,8 @@ export function NoteEditor() {
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Badge variant="outline" className={`gap-1 text-[10px] sm:text-xs px-1.5 sm:px-2 ${collab.isConnected ? 'text-emerald-600 border-emerald-300 bg-emerald-50' : 'text-muted-foreground'}`}>
-                    <div className={`w-1.5 h-1.5 rounded-full ${collab.isConnected ? 'bg-emerald-500 animate-pulse' : 'bg-muted-foreground'}`} />
+                  <Badge variant="outline" className={`gap-1 text-[10px] sm:text-xs px-1.5 sm:px-2 ${collab.isConnected ? 'text-[#a855f7] border-purple-300 bg-purple-50 dark:bg-purple-950/30 dark:border-purple-800' : 'text-muted-foreground'}`}>
+                    <div className={`w-1.5 h-1.5 rounded-full ${collab.isConnected ? 'bg-[#a855f7] animate-pulse' : 'bg-muted-foreground'}`} />
                     <span className="hidden sm:inline">{collab.isConnected ? 'Live' : 'Offline'}</span>
                   </Badge>
                 </TooltipTrigger>
@@ -386,7 +388,7 @@ export function NoteEditor() {
               <div className="hidden sm:flex -space-x-2">
                 {activeCollaborators.map((c) => (
                   <Avatar key={c.userId} className="w-7 h-7 border-2 border-background">
-                    <AvatarFallback className="text-[10px] bg-teal-100 text-teal-700">
+                    <AvatarFallback className="text-[10px] bg-purple-100 text-[#6d28d9] dark:bg-purple-950/40 dark:text-[#a855f7]">
                       {getInitials(c.userName)}
                     </AvatarFallback>
                   </Avatar>
@@ -397,7 +399,7 @@ export function NoteEditor() {
             {/* Actions dropdown */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="icon" className="h-8 w-8">
+                <Button variant="outline" size="icon" className="h-8 w-8 hover:bg-purple-50 dark:hover:bg-purple-950/30">
                   <MoreVertical className="w-4 h-4" />
                 </Button>
               </DropdownMenuTrigger>
@@ -449,10 +451,10 @@ export function NoteEditor() {
       )}
 
       {/* Editor */}
-      <div className="flex-1 max-w-4xl mx-auto w-full px-4 py-6">
+      <div className="flex-1 max-w-4xl mx-auto w-full px-4 py-6 bg-background">
         {initialLoad ? (
           <div className="flex items-center justify-center py-20">
-            <Loader2 className="w-6 h-6 animate-spin text-emerald-600" />
+            <Loader2 className="w-6 h-6 animate-spin text-[#a855f7]" />
             <span className="ml-2 text-muted-foreground">Loading note...</span>
           </div>
         ) : (
@@ -469,14 +471,14 @@ export function NoteEditor() {
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <History className="w-5 h-5 text-emerald-600" />
+              <History className="w-5 h-5 text-[#a855f7]" />
               Version History
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <Button
               size="sm"
-              className="w-full bg-emerald-600 hover:bg-emerald-700"
+              className="w-full btn-gradient"
               onClick={handleSaveVersion}
             >
               Save Current Version
@@ -486,7 +488,7 @@ export function NoteEditor() {
                 <p className="text-sm text-muted-foreground text-center py-8">No versions saved yet. Click &ldquo;Save Current Version&rdquo; to create a snapshot.</p>
               ) : (
                 versions.map((v) => (
-                  <div key={v.id} className="flex items-center gap-3 p-3 rounded-lg border border-border/50 hover:border-emerald-300 transition-colors">
+                  <div key={v.id} className="flex items-center gap-3 p-3 rounded-lg border border-border/50 hover:border-purple-300 transition-colors">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <Badge variant="secondary" className="text-xs">v{v.version}</Badge>
