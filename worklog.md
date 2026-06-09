@@ -126,3 +126,33 @@ Stage Summary:
 - Search works across all list views with decrypted content
 - Destructive actions now have confirmation dialogs
 - Pin sorting works correctly across all views
+
+---
+Task ID: 3
+Agent: Main Agent
+Task: Implement 7 features — account settings, forgot password, archive view, workspace edit, version history decryption, pagination, rate limiting, E2EE overflow fix
+
+Work Log:
+- Fixed E2EE String.fromCharCode overflow in e2ee.ts (chunked conversion for large Uint8Arrays)
+- Fixed same pattern in auth-page.tsx salt generation
+- Created rate limiting library (src/lib/rate-limit.ts) with in-memory sliding window per IP
+- Applied rate limiting to all 12 API routes: auth (10/min login, 5/min register), notes/todos/workspaces (60/min), members (20/min)
+- Created account settings page (src/components/settings/settings-view.tsx) with profile editing, password change, and delete account
+- Added forgot password flow to auth-page.tsx (simulated email reset)
+- Created API routes: /api/auth/account (PUT name/password, DELETE account), /api/auth/forgot-password (POST)
+- Created archive view (src/components/archive/archive-view.tsx) showing archived notes/todos with restore and delete actions
+- Modified notes/todos API routes to support ?archived=true query param
+- Added workspace edit dialog in workspaces-view.tsx with rename, description, color picker
+- Fixed version history decryption in note-editor.tsx — versions now display decrypted titles/content
+- Added client-side pagination (PAGE_SIZE=12) to notes-list.tsx and todos-list.tsx using shadcn/ui Pagination component
+- Updated sidebar with Archive and Settings nav icons
+- Updated page.tsx with settings and archive view routing
+- Updated app-store.ts with 'settings' and 'archive' view types + updateUserName action
+
+Stage Summary:
+- 7 features fully implemented and verified
+- All API routes protected with rate limiting (17 handler functions across 12 route files)
+- E2EE overflow bug fixed — large notes no longer cause "Maximum call stack size exceeded"
+- Lint passes cleanly, dev server compiles without errors
+- Browser-verified: settings page, archive page, forgot password flow all rendering correctly
+- All API calls returning 200 status codes

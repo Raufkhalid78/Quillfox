@@ -1,10 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { rateLimit, getClientIp } from '@/lib/rate-limit'
+
+function checkRateLimit(req: any): boolean {
+  const ip = getClientIp(req)
+  return rateLimit(`todos:items:${ip}`, 60).success
+}
 
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  if (!checkRateLimit(req)) {
+    return NextResponse.json({ error: 'Rate limit exceeded' }, { status: 429 })
+  }
   try {
     const { id } = await params
     const { title, order } = await req.json()
@@ -53,6 +62,9 @@ export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  if (!checkRateLimit(req)) {
+    return NextResponse.json({ error: 'Rate limit exceeded' }, { status: 429 })
+  }
   try {
     const { id } = await params
     const { items } = await req.json()

@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { rateLimit, getClientIp } from '@/lib/rate-limit'
+
+function checkRateLimit(req: NextRequest): boolean {
+  const ip = getClientIp(req)
+  return rateLimit(`notes:id:${ip}`, 60).success
+}
 
 export async function GET(
   req: NextRequest,
@@ -7,6 +13,9 @@ export async function GET(
 ) {
   try {
     const { id } = await params
+    if (!checkRateLimit(req)) {
+      return NextResponse.json({ error: 'Rate limit exceeded' }, { status: 429 })
+    }
     const note = await db.note.findUnique({
       where: { id },
     })
@@ -38,6 +47,9 @@ export async function PUT(
 ) {
   try {
     const { id } = await params
+    if (!checkRateLimit(req)) {
+      return NextResponse.json({ error: 'Rate limit exceeded' }, { status: 429 })
+    }
     const body = await req.json()
 
     const note = await db.note.findUnique({ where: { id } })
@@ -78,6 +90,9 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params
+    if (!checkRateLimit(req)) {
+      return NextResponse.json({ error: 'Rate limit exceeded' }, { status: 429 })
+    }
     const note = await db.note.findUnique({ where: { id } })
     if (!note) {
       return NextResponse.json({ error: 'Note not found' }, { status: 404 })

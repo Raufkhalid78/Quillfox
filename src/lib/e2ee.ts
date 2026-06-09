@@ -58,7 +58,14 @@ export async function encrypt(
   combined.set(salt, 0)
   combined.set(iv, salt.length)
   combined.set(new Uint8Array(ciphertext), salt.length + iv.length)
-  return btoa(String.fromCharCode(...combined))
+  // Chunked conversion to avoid "Maximum call stack size exceeded" on large data
+  let binary = ''
+  const chunkSize = 0x8000
+  for (let i = 0; i < combined.length; i += chunkSize) {
+    const chunk = combined.subarray(i, i + chunkSize)
+    binary += String.fromCharCode(...chunk)
+  }
+  return btoa(binary)
 }
 
 // Decrypt base64 encoded string → returns plaintext

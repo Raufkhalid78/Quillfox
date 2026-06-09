@@ -23,9 +23,10 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { toast } from 'sonner'
+import { Textarea } from '@/components/ui/textarea'
 import {
   Plus, Layers, ShieldCheck, Users, PenLine, LogOut, Sun, Moon,
-  FileText, CheckSquare, Loader2, UserPlus, Mail, Trash2, ChevronRight,
+  FileText, CheckSquare, Loader2, UserPlus, Mail, Trash2, ChevronRight, Pencil,
 } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { format, formatDistanceToNow } from 'date-fns'
@@ -80,6 +81,11 @@ export function WorkspacesView() {
   const [quickTodoTitle, setQuickTodoTitle] = useState('')
   const [isQuickCreating, setIsQuickCreating] = useState(false)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const [editOpen, setEditOpen] = useState(false)
+  const [editTitle, setEditTitle] = useState('')
+  const [editDescription, setEditDescription] = useState('')
+  const [editColor, setEditColor] = useState('')
+  const [isSaving, setIsSaving] = useState(false)
 
   const { theme, setTheme } = useTheme()
 
@@ -172,6 +178,40 @@ export function WorkspacesView() {
       }
     } catch {
       toast.error('Failed to remove member')
+    }
+  }
+
+  const handleOpenEdit = () => {
+    if (!selectedWs) return
+    setEditTitle(selectedWs.title)
+    setEditDescription(selectedWs.description || '')
+    setEditColor(selectedWs.color)
+    setEditOpen(true)
+  }
+
+  const handleEditWorkspace = async () => {
+    if (!selectedWs) return
+    setIsSaving(true)
+    try {
+      const res = await fetch(`/api/workspaces/${selectedWs.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: editTitle.trim() || 'Untitled Workspace', description: editDescription.trim() || null, color: editColor }),
+      })
+      if (res.ok) {
+        const updated = await res.json()
+        setWorkspacesAction(workspaces.map((w) => (w.id === selectedWs.id ? updated : w)))
+        setSelectedWs(updated)
+        setEditOpen(false)
+        setWsDetailOpen(false)
+        toast.success('Workspace updated')
+      } else {
+        toast.error('Failed to update workspace')
+      }
+    } catch {
+      toast.error('Failed to update workspace')
+    } finally {
+      setIsSaving(false)
     }
   }
 
@@ -417,6 +457,14 @@ export function WorkspacesView() {
             <DialogTitle className="flex items-center gap-2">
               <div className="w-3 h-3 rounded-full" style={{ backgroundColor: selectedWs?.color }} />
               {selectedWs?.title}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 ml-1 shrink-0"
+                onClick={(e) => { e.stopPropagation(); handleOpenEdit() }}
+              >
+                <Pencil className="w-3.5 h-3.5" />
+              </Button>
             </DialogTitle>
             <DialogDescription>
               {selectedWs?.description || 'No description'}
@@ -525,6 +573,53 @@ export function WorkspacesView() {
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 Delete Workspace
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Workspace Dialog */}
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Workspace</DialogTitle>
+            <DialogDescription>Update workspace name, description, and color</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 mt-4">
+            <Input
+              placeholder="Workspace title..."
+              value={editTitle}
+              onChange={(e) => setEditTitle(e.target.value)}
+            />
+            <Textarea
+              placeholder="Description (optional)..."
+              value={editDescription}
+              onChange={(e) => setEditDescription(e.target.value)}
+              rows={3}
+            />
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">Color:</span>
+              {workspaceColors.map((c) => (
+                <button
+                  key={c.name}
+                  type="button"
+                  className="w-6 h-6 rounded-full border-2 transition-all hover:scale-110"
+                  style={{ backgroundColor: c.value, borderColor: editColor === c.value ? (theme === 'dark' ? '#fff' : '#000') : 'transparent' }}
+                  onClick={() => setEditColor(c.value)}
+                />
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" className="flex-1 rounded-lg" onClick={() => setEditOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                className="flex-1 bg-gradient-to-r from-emerald-600 to-violet-600 text-white hover:from-emerald-600/90 hover:to-violet-600/90 rounded-lg"
+                onClick={handleEditWorkspace}
+                disabled={isSaving}
+              >
+                {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save Changes'}
               </Button>
             </div>
           </div>

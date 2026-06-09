@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
-export type AppView = 'auth' | 'dashboard' | 'note-editor' | 'todo-list' | 'notes' | 'todos' | 'workspaces' | 'pricing'
+export type AppView = 'auth' | 'dashboard' | 'note-editor' | 'todo-list' | 'notes' | 'todos' | 'workspaces' | 'settings' | 'pricing'
 
 export interface User {
   id: string
@@ -109,6 +109,7 @@ interface AppState {
   removeTodoList: (todoListId: string) => void
   updateTodoListItems: (todoListId: string, items: TodoItemChild[]) => void
   addTodoItem: (todoListId: string, item: TodoItemChild) => void
+  updateUserName: (name: string) => void
 }
 
 export const useAppStore = create<AppState>()(
@@ -237,6 +238,13 @@ export const useAppStore = create<AppState>()(
           todoLists: state.todoLists.map((t) =>
             t.id === todoListId ? { ...t, items: [...t.items, item] } : t
           ),
+        })),
+
+      updateUserName: (name) =>
+        set((state) => ({
+          currentUser: state.currentUser
+            ? { ...state.currentUser, name }
+            : null,
         })),
     }),
     {

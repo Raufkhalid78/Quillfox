@@ -10,7 +10,9 @@ import { TodoList } from '@/components/todo/todo-list'
 import { NotesList } from '@/components/notes/notes-list'
 import { TodosList } from '@/components/todos/todos-list'
 import { WorkspacesView } from '@/components/workspaces/workspaces-view'
+import { SettingsView } from '@/components/settings/settings-view'
 import { PricingView } from '@/components/pricing/pricing-view'
+import { ArchiveView } from '@/components/archive/archive-view'
 import { MobileNav } from '@/components/shared/mobile-nav'
 import { useAppStore } from '@/stores/app-store'
 
@@ -129,6 +131,17 @@ function AppContent() {
               <WorkspacesView />
             </motion.div>
           )}
+          {currentView === 'settings' && (
+            <motion.div
+              key="settings"
+              variants={pageVariants}
+              initial="initial"
+              animate="animate"
+              exit="exit"
+            >
+              <SettingsView />
+            </motion.div>
+          )}
           {currentView === 'pricing' && (
             <motion.div
               key="pricing"
@@ -138,6 +151,17 @@ function AppContent() {
               exit="exit"
             >
               <PricingView />
+            </motion.div>
+          )}
+          {currentView === 'archive' && (
+            <motion.div
+              key="archive"
+              variants={pageVariants}
+              initial="initial"
+              animate="animate"
+              exit="exit"
+            >
+              <ArchiveView />
             </motion.div>
           )}
         </AnimatePresence>

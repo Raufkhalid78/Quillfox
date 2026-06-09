@@ -1,14 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { rateLimit, getClientIp } from '@/lib/rate-limit'
+
+// Rate limit: 60 requests per minute per IP
+function checkRateLimit(req: NextRequest): boolean {
+  const ip = getClientIp(req)
+  return rateLimit(`notes:${ip}`, 60).success
+}
 
 export async function GET(req: NextRequest) {
   try {
+    if (!checkRateLimit(req)) {
+      return NextResponse.json({ error: 'Rate limit exceeded' }, { status: 429 })
+    }
     const { searchParams } = new URL(req.url)
     const userId = searchParams.get('userId')
     const workspaceId = searchParams.get('workspaceId')
+    const archived = searchParams.get('archived')
 
-    const where: any = {
-      isArchived: false,
+    const where: any = {}
+
+    if (archived === 'true') {
+      where.isArchived = true
+    } else {
+      where.isArchived = false
     }
 
     if (userId) {
@@ -45,6 +60,9 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    if (!checkRateLimit(req)) {
+      return NextResponse.json({ error: 'Rate limit exceeded' }, { status: 429 })
+    }
     const { title, content, workspaceId, authorId } = await req.json()
 
     if (!title || !authorId) {

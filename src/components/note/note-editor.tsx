@@ -38,6 +38,7 @@ export function NoteEditor() {
   const [initialLoad, setInitialLoad] = useState(true)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [versions, setVersions] = useState<Array<{ id: string; title: string; content: string; version: number; createdAt: string }>>([])
+  const [decryptedVersions, setDecryptedVersions] = useState<Array<{ id: string; title: string; content: string; version: number; createdAt: string }>>([])
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   const note = notes.find((n) => n.id === selectedNoteId)
@@ -203,6 +204,12 @@ export function NoteEditor() {
       const res = await fetch(`/api/notes/${selectedNoteId}/versions`)
       if (res.ok) {
         const data = await res.json()
+        const decrypted = await Promise.all(data.map(async (v) => ({
+          ...v,
+          title: await decryptNoteTitle(v.title),
+          content: await decryptNoteContent(v.content || ''),
+        })))
+        setDecryptedVersions(decrypted)
         setVersions(data)
         setHistoryOpen(true)
       }
@@ -225,12 +232,14 @@ export function NoteEditor() {
     } catch { toast.error('Failed to save version') }
   }
 
-  const handleRestoreVersion = async (version: typeof versions[0]) => {
+  const handleRestoreVersion = async (versionId: string) => {
     if (!selectedNoteId) return
-    setTitle(version.title)
-    setContent(version.content)
+    const decrypted = decryptedVersions.find((v) => v.id === versionId)
+    if (!decrypted) return
+    setTitle(decrypted.title)
+    setContent(decrypted.content)
     setHistoryOpen(false)
-    toast.success(`Restored version ${version.version}`)
+    toast.success(`Restored version ${decrypted.version}`)
     // Trigger auto-save
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
     saveTimeoutRef.current = setTimeout(() => { saveContent() }, 500)
@@ -387,10 +396,10 @@ export function NoteEditor() {
               Save Current Version
             </Button>
             <div className="max-h-96 overflow-y-auto space-y-2">
-              {versions.length === 0 ? (
+              {decryptedVersions.length === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-8">No versions saved yet. Click &ldquo;Save Current Version&rdquo; to create a snapshot.</p>
               ) : (
-                versions.map((v) => (
+                decryptedVersions.map((v) => (
                   <div key={v.id} className="flex items-center gap-3 p-3 rounded-lg border border-border/50 hover:border-[#059669]/30 transition-colors">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
@@ -405,7 +414,7 @@ export function NoteEditor() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => handleRestoreVersion(v)}
+                      onClick={() => handleRestoreVersion(v.id)}
                     >
                       Restore
                     </Button>

@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from 'sonner'
-import { Sparkles, Loader2, ShieldCheck, PenTool } from 'lucide-react'
+import { Sparkles, Loader2, ShieldCheck, PenTool, ArrowLeft, Mail } from 'lucide-react'
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -58,6 +58,11 @@ export function AuthPage() {
   const [registerName, setRegisterName] = useState('')
   const [registerEmail, setRegisterEmail] = useState('')
   const [registerPassword, setRegisterPassword] = useState('')
+  // Forgot password state
+  const [showForgotPassword, setShowForgotPassword] = useState(false)
+  const [forgotEmail, setForgotEmail] = useState('')
+  const [forgotSent, setForgotSent] = useState(false)
+  const [isForgotLoading, setIsForgotLoading] = useState(false)
   const login = useAppStore((s) => s.login)
   const setEncryptionKey = useAppStore((s) => s.setEncryptionKey)
 
@@ -114,7 +119,11 @@ export function AuthPage() {
     try {
       // Generate encryption salt client-side
       const salt = generateSalt()
-      const saltBase64 = btoa(String.fromCharCode(...salt))
+      let saltBinary = ''
+      for (let i = 0; i < salt.length; i++) {
+        saltBinary += String.fromCharCode(salt[i])
+      }
+      const saltBase64 = btoa(saltBinary)
 
       const res = await fetch('/api/auth/register', {
         method: 'POST',
@@ -147,6 +156,37 @@ export function AuthPage() {
     } finally {
       setIsLoading(false)
     }
+  }
+
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!forgotEmail.trim()) {
+      toast.error('Please enter your email address')
+      return
+    }
+    setIsForgotLoading(true)
+    try {
+      const res = await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: forgotEmail.trim() }),
+      })
+      if (res.ok) {
+        setForgotSent(true)
+      } else {
+        toast.error('Something went wrong. Please try again.')
+      }
+    } catch {
+      toast.error('Network error. Please try again.')
+    } finally {
+      setIsForgotLoading(false)
+    }
+  }
+
+  const resetForgotPassword = () => {
+    setShowForgotPassword(false)
+    setForgotEmail('')
+    setForgotSent(false)
   }
 
   return (
@@ -267,6 +307,82 @@ export function AuthPage() {
                     transition={{ duration: 0.25, ease: 'easeInOut' }}
                   >
                     <TabsContent value="login" className="mt-0">
+                      {showForgotPassword ? (
+                        forgotSent ? (
+                          <motion.div
+                            initial={{ opacity: 0, scale: 0.96 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            className="flex flex-col items-center text-center py-4 space-y-3"
+                          >
+                            <div className="w-12 h-12 rounded-full bg-[#6d28d9]/10 flex items-center justify-center">
+                              <Mail className="w-6 h-6 text-[#6d28d9] dark:text-[#a855f7]" />
+                            </div>
+                            <div>
+                              <p className="text-sm font-medium">Check your email</p>
+                              <p className="text-xs text-muted-foreground mt-1">
+                                If an account exists with that email, a reset link has been sent.
+                              </p>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="gap-1.5 text-xs text-[#6d28d9] dark:text-[#a855f7] hover:text-[#5b21b6] dark:hover:text-[#c084fc]"
+                              onClick={resetForgotPassword}
+                            >
+                              <ArrowLeft className="w-3.5 h-3.5" />
+                              Back to login
+                            </Button>
+                          </motion.div>
+                        ) : (
+                          <motion.div
+                            initial={{ opacity: 0, x: 12 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            className="space-y-4"
+                          >
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="gap-1.5 text-xs text-muted-foreground hover:text-foreground h-7 px-0"
+                              onClick={resetForgotPassword}
+                            >
+                              <ArrowLeft className="w-3.5 h-3.5" />
+                              Back to login
+                            </Button>
+                            <form onSubmit={handleForgotPassword} className="space-y-4">
+                              <div className="space-y-2">
+                                <Label htmlFor="forgot-email" className="text-sm font-medium">Email Address</Label>
+                                <div className="relative">
+                                  <Input
+                                    id="forgot-email"
+                                    type="email"
+                                    placeholder="you@example.com"
+                                    value={forgotEmail}
+                                    onChange={(e) => setForgotEmail(e.target.value)}
+                                    disabled={isForgotLoading}
+                                    className="h-11 glass-input pl-4 pr-4 rounded-xl"
+                                  />
+                                </div>
+                              </div>
+                              <Button
+                                type="submit"
+                                className="w-full h-11 rounded-xl text-sm font-semibold btn-gradient btn-shine"
+                                disabled={isForgotLoading}
+                              >
+                                <span className="flex items-center justify-center">
+                                  {isForgotLoading ? (
+                                    <>
+                                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                      Sending...
+                                    </>
+                                  ) : (
+                                    'Send Reset Link'
+                                  )}
+                                </span>
+                              </Button>
+                            </form>
+                          </motion.div>
+                        )
+                      ) : (
                       <form onSubmit={handleLogin} className="space-y-4">
                         <div className="space-y-2">
                           <Label htmlFor="login-email" className="text-sm font-medium">Email</Label>
@@ -295,6 +411,15 @@ export function AuthPage() {
                               disabled={isLoading}
                               className="h-11 glass-input pl-4 pr-4 rounded-xl"
                             />
+                          </div>
+                          <div className="flex justify-end">
+                            <button
+                              type="button"
+                              onClick={() => setShowForgotPassword(true)}
+                              className="text-xs font-medium text-[#6d28d9] dark:text-[#a855f7] hover:text-[#5b21b6] dark:hover:text-[#c084fc] transition-colors"
+                            >
+                              Forgot password?
+                            </button>
                           </div>
                         </div>
                         <motion.div
@@ -333,6 +458,7 @@ export function AuthPage() {
                           </span>
                         </Button>
                       </form>
+                      )}
                     </TabsContent>
 
                     <TabsContent value="register" className="mt-0">

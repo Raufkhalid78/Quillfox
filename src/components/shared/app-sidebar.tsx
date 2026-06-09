@@ -13,6 +13,8 @@ import {
   Moon,
   Sun,
   PenLine,
+  Archive,
+  Settings,
 } from 'lucide-react'
 import { useTheme } from 'next-themes'
 
@@ -26,6 +28,8 @@ const navItems = [
   { key: 'notes', view: 'notes' as const, icon: FileText, label: 'Notes' },
   { key: 'todos', view: 'todos' as const, icon: ListTodo, label: 'Todos' },
   { key: 'workspaces', view: 'workspaces' as const, icon: Layers, label: 'Workspaces' },
+  { key: 'archive', view: 'archive' as const, icon: Archive, label: 'Archive' },
+  { key: 'settings', view: 'settings' as const, icon: Settings, label: 'Settings' },
 ]
 
 export function AppSidebar({ activeView, onUpgradeClick }: AppSidebarProps) {
@@ -38,6 +42,8 @@ export function AppSidebar({ activeView, onUpgradeClick }: AppSidebarProps) {
     if (key === 'notes') return activeView === 'notes' || activeView === 'note-editor'
     if (key === 'todos') return activeView === 'todos' || activeView === 'todo-list'
     if (key === 'workspaces') return activeView === 'workspaces'
+    if (key === 'archive') return activeView === 'archive'
+    if (key === 'settings') return activeView === 'settings'
     return false
   }
 
@@ -46,6 +52,8 @@ export function AppSidebar({ activeView, onUpgradeClick }: AppSidebarProps) {
     else if (key === 'notes') setView('notes')
     else if (key === 'todos') setView('todos')
     else if (key === 'workspaces') setView('workspaces')
+    else if (key === 'archive') setView('archive')
+    else if (key === 'settings') setView('settings')
   }
 
   const handleUpgrade = () => {

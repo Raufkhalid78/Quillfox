@@ -1,9 +1,10 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import { useAppStore } from '@/stores/app-store'
 import { encryptNoteTitle, decryptNoteTitle, decryptNoteContent } from '@/lib/encrypted-api'
+import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationPrevious, PaginationNext, PaginationEllipsis } from '@/components/ui/pagination'
 import { AppSidebar } from '@/components/shared/app-sidebar'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -42,7 +43,10 @@ export function NotesList() {
   const [newTitle, setNewTitle] = useState('')
   const [newWorkspace, setNewWorkspace] = useState<string>('')
   const [searchQuery, setSearchQuery] = useState('')
+  const [page, setPage] = useState(1)
+  const PAGE_SIZE = 12
   const { theme, setTheme } = useTheme()
+  const contentRef = useRef<HTMLDivElement>(null)
 
   const [decryptedNotes, setDecryptedNotes] = useState<Map<string, { title: string; preview: string }>>(new Map())
 
@@ -79,6 +83,15 @@ export function NotesList() {
   useEffect(() => {
     if (!currentUser) setView('auth')
   }, [currentUser, setView])
+
+  useEffect(() => {
+    setPage(1)
+  }, [searchQuery])
+
+  const handlePageChange = useCallback((newPage: number) => {
+    setPage(newPage)
+    contentRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
+  }, [])
 
   const handleCreate = async () => {
     if (!currentUser) return
@@ -120,6 +133,11 @@ export function NotesList() {
         return decrypted?.title.toLowerCase().includes(searchQuery.toLowerCase())
       })
     : activeNotes
+
+  const totalPages = Math.ceil(filteredNotes.length / PAGE_SIZE)
+  const paginatedNotes = filteredNotes.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+  const paginationStart = (page - 1) * PAGE_SIZE + 1
+  const paginationEnd = Math.min(page * PAGE_SIZE, filteredNotes.length)
 
   return (
     <div className="min-h-screen flex bg-background">
@@ -180,7 +198,7 @@ export function NotesList() {
         </header>
 
         {/* Content */}
-        <main className="flex-1 overflow-y-auto">
+        <main className="flex-1 overflow-y-auto" ref={contentRef}>
           <div className="max-w-4xl mx-auto px-4 md:px-8 py-6 md:py-8">
             {isLoading ? (
               <div className="space-y-3">
@@ -212,8 +230,9 @@ export function NotesList() {
                 <p className="text-sm text-muted-foreground mb-4">Try a different search term</p>
               </motion.div>
             ) : (
+              <>
               <motion.div initial="hidden" animate="visible" variants={stagger} className="space-y-2">
-                {filteredNotes.map((note) => {
+                {paginatedNotes.map((note) => {
                   const decrypted = decryptedNotes.get(note.id)
                   const ws = workspaces.find((w) => w.id === note.workspaceId)
                   return (
@@ -252,6 +271,60 @@ export function NotesList() {
                   )
                 })}
               </motion.div>
+              {totalPages > 1 && (
+                <div className="mt-6 flex flex-col items-center gap-3">
+                  <p className="text-xs text-muted-foreground">
+                    Showing {paginationStart}–{paginationEnd} of {filteredNotes.length}
+                  </p>
+                  <Pagination>
+                    <PaginationContent>
+                      <PaginationItem>
+                        <PaginationPrevious
+                          onClick={() => page > 1 && handlePageChange(page - 1)}
+                          className={page <= 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+                        />
+                      </PaginationItem>
+                      {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => {
+                        if (totalPages <= 7 || p === 1 || p === totalPages || Math.abs(p - page) <= 1) {
+                          return (
+                            <PaginationItem key={p}>
+                              <PaginationLink
+                                isActive={p === page}
+                                onClick={() => handlePageChange(p)}
+                                className="cursor-pointer"
+                              >
+                                {p}
+                              </PaginationLink>
+                            </PaginationItem>
+                          )
+                        }
+                        if (p === 2 && page > 4) {
+                          return (
+                            <PaginationItem key={`ellipsis-start-${p}`}>
+                              <PaginationEllipsis />
+                            </PaginationItem>
+                          )
+                        }
+                        if (p === totalPages - 1 && page < totalPages - 3) {
+                          return (
+                            <PaginationItem key={`ellipsis-end-${p}`}>
+                              <PaginationEllipsis />
+                            </PaginationItem>
+                          )
+                        }
+                        return null
+                      })}
+                      <PaginationItem>
+                        <PaginationNext
+                          onClick={() => page < totalPages && handlePageChange(page + 1)}
+                          className={page >= totalPages ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+                        />
+                      </PaginationItem>
+                    </PaginationContent>
+                  </Pagination>
+                </div>
+              )}
+              </>
             )}
           </div>
         </main>

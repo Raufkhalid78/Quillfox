@@ -20,6 +20,8 @@ import {
   Sun,
   Menu,
   PenLine,
+  Archive,
+  Settings,
 } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import * as React from 'react'
@@ -29,6 +31,8 @@ const navItems = [
   { key: 'notes', view: 'notes' as const, icon: FileText, label: 'Notes' },
   { key: 'todos', view: 'todos' as const, icon: ListTodo, label: 'Todos' },
   { key: 'workspaces', view: 'workspaces' as const, icon: Layers, label: 'Workspaces' },
+  { key: 'archive', view: 'archive' as const, icon: Archive, label: 'Archive' },
+  { key: 'settings', view: 'settings' as const, icon: Settings, label: 'Settings' },
 ]
 
 export function MobileNav() {
@@ -46,6 +50,8 @@ export function MobileNav() {
     if (key === 'notes') return currentView === 'notes' || currentView === 'note-editor'
     if (key === 'todos') return currentView === 'todos' || currentView === 'todo-list'
     if (key === 'workspaces') return currentView === 'workspaces'
+    if (key === 'archive') return currentView === 'archive'
+    if (key === 'settings') return currentView === 'settings'
     return false
   }
 
@@ -54,6 +60,8 @@ export function MobileNav() {
     else if (key === 'notes') setView('notes')
     else if (key === 'todos') setView('todos')
     else if (key === 'workspaces') setView('workspaces')
+    else if (key === 'archive') setView('archive')
+    else if (key === 'settings') setView('settings')
     setOpen(false)
   }
 

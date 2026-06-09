@@ -1,9 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import bcrypt from 'bcryptjs'
+import { rateLimit, getClientIp } from '@/lib/rate-limit'
 
 export async function POST(req: NextRequest) {
   try {
+    // Rate limit: 10 login attempts per minute per IP
+    const ip = getClientIp(req)
+    const rl = rateLimit(`auth:login:${ip}`, 10)
+    if (!rl.success) {
+      return NextResponse.json({ error: 'Too many login attempts. Please try again later.' }, { status: 429 })
+    }
+
     const { email, password } = await req.json()
 
     if (!email || !password) {
