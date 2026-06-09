@@ -10,6 +10,8 @@ import { TodoList } from '@/components/todo/todo-list'
 import { NotesList } from '@/components/notes/notes-list'
 import { TodosList } from '@/components/todos/todos-list'
 import { WorkspacesView } from '@/components/workspaces/workspaces-view'
+import { PricingView } from '@/components/pricing/pricing-view'
+import { MobileNav } from '@/components/shared/mobile-nav'
 import { useAppStore } from '@/stores/app-store'
 
 const pageVariants = {
@@ -48,6 +50,7 @@ function AppContent() {
   return (
     <div className="min-h-screen flex flex-col bg-background text-foreground overflow-x-hidden noise-overlay">
       <main className="flex-1">
+        <MobileNav />
         <AnimatePresence mode="wait">
           {currentView === 'auth' && (
             <motion.div
@@ -124,6 +127,17 @@ function AppContent() {
               exit="exit"
             >
               <WorkspacesView />
+            </motion.div>
+          )}
+          {currentView === 'pricing' && (
+            <motion.div
+              key="pricing"
+              variants={pageVariants}
+              initial="initial"
+              animate="animate"
+              exit="exit"
+            >
+              <PricingView />
             </motion.div>
           )}
         </AnimatePresence>

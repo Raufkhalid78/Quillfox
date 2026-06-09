@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { toast } from 'sonner'
 import { AppSidebar } from '@/components/shared/app-sidebar'
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { ArrowLeft, Plus, Trash2, GripVertical, Loader2, Lock, ShieldCheck, ShieldAlert, Pin, Archive, ArchiveRestore, Share2, MoreVertical } from 'lucide-react'
 
 export function TodoList() {
@@ -257,6 +258,10 @@ export function TodoList() {
     [selectedTodoListId, updateTodoListTitle]
   )
 
+  const [editingItemId, setEditingItemId] = useState<string | null>(null)
+  const [editValue, setEditValue] = useState('')
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+
   const handleDelete = async () => {
     if (!selectedTodoListId) return
     try {
@@ -264,14 +269,17 @@ export function TodoList() {
         method: 'DELETE',
       })
       if (res.ok) {
+        removeTodoList(selectedTodoListId)
         toast.success('Todo list deleted')
-        setView('dashboard')
+        setDeleteConfirmOpen(false)
+        setView('todos')
       }
     } catch {
       toast.error('Failed to delete')
     }
   }
 
+  const removeTodoList = useAppStore((s) => s.removeTodoList)
   const setTodoListsAction = useAppStore((s) => s.setTodoLists)
 
   const handleTogglePin = async () => {
@@ -423,7 +431,7 @@ export function TodoList() {
                   {todoList?.isArchived ? 'Restore from Archive' : 'Archive'}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleDelete} className="text-destructive focus:text-destructive">
+                <DropdownMenuItem onClick={() => setDeleteConfirmOpen(true)} className="text-destructive focus:text-destructive">
                   <Trash2 className="w-4 h-4 mr-2" />
                   Delete
                 </DropdownMenuItem>
@@ -504,15 +512,50 @@ export function TodoList() {
                 />
 
                 {/* Title */}
-                <span
-                  className={`flex-1 text-sm transition-all ${
-                    item.completed
-                      ? 'line-through text-muted-foreground'
-                      : 'text-foreground'
-                  }`}
-                >
-                  {item.title}
-                </span>
+                {editingItemId === item.id ? (
+                  <Input
+                    autoFocus
+                    value={editValue}
+                    onChange={(e) => setEditValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        if (editValue.trim()) {
+                          const updatedItems = itemsRef.current.map((i) =>
+                            i.id === item.id ? { ...i, title: editValue.trim() } : i
+                          )
+                          setItems(updatedItems)
+                          if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
+                          saveTimeoutRef.current = setTimeout(() => {
+                            saveItemsFn(updatedItems)
+                          }, 500)
+                        }
+                        setEditingItemId(null)
+                        setEditValue('')
+                      } else if (e.key === 'Escape') {
+                        setEditingItemId(null)
+                        setEditValue('')
+                      }
+                    }}
+                    className="h-7 text-sm border-0 focus-visible:ring-1 px-1 bg-transparent"
+                  />
+                ) : (
+                  <span
+                    onDoubleClick={() => {
+                      if (!isLocked && !item.completed) {
+                        setEditingItemId(item.id)
+                        setEditValue(item.title)
+                      }
+                    }}
+                    className={`flex-1 text-sm transition-all ${
+                      item.completed
+                        ? 'line-through text-muted-foreground'
+                        : 'text-foreground'
+                    }`}
+                  >
+                    {item.title}
+                  </span>
+                )}
 
                 {/* Delete */}
                 {!isLocked && (
@@ -565,6 +608,24 @@ export function TodoList() {
         )}
       </div>
       </div>
+
+      {/* Delete Confirmation */}
+      <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this todo list?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This list and all its items will be permanently deleted.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

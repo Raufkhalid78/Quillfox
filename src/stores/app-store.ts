@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
-export type AppView = 'auth' | 'dashboard' | 'note-editor' | 'todo-list' | 'notes' | 'todos' | 'workspaces'
+export type AppView = 'auth' | 'dashboard' | 'note-editor' | 'todo-list' | 'notes' | 'todos' | 'workspaces' | 'pricing'
 
 export interface User {
   id: string

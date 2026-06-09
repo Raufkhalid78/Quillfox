@@ -48,6 +48,14 @@ export function AppSidebar({ activeView, onUpgradeClick }: AppSidebarProps) {
     else if (key === 'workspaces') setView('workspaces')
   }
 
+  const handleUpgrade = () => {
+    if (onUpgradeClick) {
+      onUpgradeClick()
+    } else {
+      setView('pricing')
+    }
+  }
+
   return (
     <aside className="hidden md:flex flex-col w-[72px] border-r border-border/60 bg-card/50 backdrop-blur-sm">
       {/* Logo */}
@@ -87,17 +95,17 @@ export function AppSidebar({ activeView, onUpgradeClick }: AppSidebarProps) {
               <Button
                 variant="ghost"
                 size="icon"
-                className={`w-10 h-10 rounded-xl ${
-                  !isActive('upgrade')
-                    ? 'text-muted-foreground hover:text-foreground'
+                className={`w-10 h-10 rounded-xl transition-colors ${
+                  activeView === 'pricing'
+                    ? 'bg-[#d97706]/10 text-[#d97706]'
                     : 'text-muted-foreground hover:text-foreground'
                 }`}
-                onClick={onUpgradeClick}
+                onClick={handleUpgrade}
               >
                 <Crown className="w-4 h-4" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="right">Upgrade</TooltipContent>
+            <TooltipContent side="right">Pricing</TooltipContent>
           </Tooltip>
         </TooltipProvider>
       </nav>

@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { toast } from 'sonner'
-import { Plus, FileText, Clock, ShieldCheck, PenLine, LogOut, Sun, Moon, StickyNote } from 'lucide-react'
+import { Plus, FileText, Clock, ShieldCheck, PenLine, LogOut, Sun, Moon, StickyNote, Search } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { formatDistanceToNow } from 'date-fns'
 
@@ -41,6 +41,7 @@ export function NotesList() {
   const [createOpen, setCreateOpen] = useState(false)
   const [newTitle, setNewTitle] = useState('')
   const [newWorkspace, setNewWorkspace] = useState<string>('')
+  const [searchQuery, setSearchQuery] = useState('')
   const { theme, setTheme } = useTheme()
 
   const [decryptedNotes, setDecryptedNotes] = useState<Map<string, { title: string; preview: string }>>(new Map())
@@ -107,7 +108,18 @@ export function NotesList() {
 
   const activeNotes = notes
     .filter((n) => !n.isArchived)
-    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+    .sort((a, b) => {
+      // Pinned items first, then by updatedAt desc
+      if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1
+      return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+    })
+
+  const filteredNotes = searchQuery
+    ? activeNotes.filter((n) => {
+        const decrypted = decryptedNotes.get(n.id)
+        return decrypted?.title.toLowerCase().includes(searchQuery.toLowerCase())
+      })
+    : activeNotes
 
   return (
     <div className="min-h-screen flex bg-background">
@@ -137,6 +149,16 @@ export function NotesList() {
                 </Tooltip>
               </TooltipProvider>
             )}
+          </div>
+
+          <div className="relative max-w-[200px] sm:max-w-[280px] mx-3 shrink-0">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground/60 pointer-events-none" />
+            <Input
+              placeholder="Search notes..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="h-8 text-xs rounded-lg pl-8"
+            />
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
@@ -181,9 +203,17 @@ export function NotesList() {
                   Create Note
                 </Button>
               </motion.div>
+            ) : filteredNotes.length === 0 ? (
+              <motion.div initial="hidden" animate="visible" variants={fadeUp} className="flex flex-col items-center justify-center py-20">
+                <div className="w-16 h-16 rounded-2xl bg-muted/50 flex items-center justify-center mb-4">
+                  <Search className="w-8 h-8 text-muted-foreground/40" />
+                </div>
+                <h3 className="text-lg font-semibold mb-1">No notes match your search</h3>
+                <p className="text-sm text-muted-foreground mb-4">Try a different search term</p>
+              </motion.div>
             ) : (
               <motion.div initial="hidden" animate="visible" variants={stagger} className="space-y-2">
-                {activeNotes.map((note) => {
+                {filteredNotes.map((note) => {
                   const decrypted = decryptedNotes.get(note.id)
                   const ws = workspaces.find((w) => w.id === note.workspaceId)
                   return (

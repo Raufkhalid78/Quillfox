@@ -6,7 +6,6 @@ import { useAppStore } from '@/stores/app-store'
 import { encryptNoteContent, encryptNoteTitle, decryptNoteContent, decryptNoteTitle } from '@/lib/encrypted-api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
@@ -19,6 +18,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { toast } from 'sonner'
 import { AppSidebar } from '@/components/shared/app-sidebar'
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { ArrowLeft, Loader2, ShieldCheck, ShieldAlert, Pin, Archive, ArchiveRestore, Share2, History, MoreVertical, Trash2 } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { formatDistanceToNow } from 'date-fns'
@@ -124,6 +124,8 @@ export function NoteEditor() {
     [saveContent]
   )
 
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+
   const handleDelete = async () => {
     if (!selectedNoteId) return
     try {
@@ -131,14 +133,17 @@ export function NoteEditor() {
         method: 'DELETE',
       })
       if (res.ok) {
+        removeNote(selectedNoteId)
         toast.success('Note deleted')
-        setView('dashboard')
+        setDeleteConfirmOpen(false)
+        setView('notes')
       }
     } catch {
       toast.error('Failed to delete note')
     }
   }
 
+  const removeNote = useAppStore((s) => s.removeNote)
   const setNotesAction = useAppStore((s) => s.setNotes)
 
   const handleTogglePin = async () => {
@@ -324,7 +329,7 @@ export function NoteEditor() {
                   {note?.isArchived ? 'Restore from Archive' : 'Archive'}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleDelete} className="text-destructive focus:text-destructive">
+                <DropdownMenuItem onClick={() => setDeleteConfirmOpen(true)} className="text-destructive focus:text-destructive">
                   <Trash2 className="w-4 h-4 mr-2" />
                   Delete
                 </DropdownMenuItem>
@@ -411,6 +416,24 @@ export function NoteEditor() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation */}
+      <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this note?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This note will be permanently deleted.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

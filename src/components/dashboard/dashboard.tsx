@@ -89,7 +89,6 @@ export function Dashboard() {
   const [wsMembers, setWsMembers] = useState<Array<{ id: string; userId: string; role: string; joinedAt: string; user: { id: string; name: string | null; email: string; image: string | null } }>>([])
   const [inviteEmail, setInviteEmail] = useState('')
   const [isInviting, setIsInviting] = useState(false)
-  const [pricingOpen, setPricingOpen] = useState(false)
   const [quickNoteTitle, setQuickNoteTitle] = useState('')
   const [quickTodoTitle, setQuickTodoTitle] = useState('')
   const [isQuickCreating, setIsQuickCreating] = useState(false)
@@ -317,12 +316,18 @@ export function Dashboard() {
 
   const recentNotes = notes
     .filter((n) => !n.isArchived)
-    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+    .sort((a, b) => {
+      if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1
+      return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+    })
     .slice(0, 4)
 
   const recentTodos = todoLists
     .filter((t) => !t.isArchived)
-    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+    .sort((a, b) => {
+      if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1
+      return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+    })
     .slice(0, 4)
 
   const getInitials = (name: string | null) => {
@@ -353,7 +358,7 @@ export function Dashboard() {
 
   return (
     <div className="min-h-screen flex bg-background">
-      <AppSidebar activeView="dashboard" onUpgradeClick={() => setPricingOpen(true)} />
+      <AppSidebar activeView="dashboard" onUpgradeClick={() => setView('pricing')} />
 
       {/* ── Main Content ── */}
       <div className="flex-1 flex flex-col min-w-0">
@@ -876,48 +881,7 @@ export function Dashboard() {
         </DialogContent>
       </Dialog>
 
-      {/* ── Pricing Dialog ── */}
-      <Dialog open={pricingOpen} onOpenChange={setPricingOpen}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Crown className="w-5 h-5 text-[#d97706]" />
-              Choose Your Plan
-            </DialogTitle>
-            <DialogDescription>Unlock the full power of QuillFox</DialogDescription>
-          </DialogHeader>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
-            {/* Free Plan */}
-            <div className="rounded-2xl border border-border/50 p-5 bg-card/30">
-              <h4 className="font-semibold text-sm mb-0.5">Free</h4>
-              <p className="text-[10px] text-muted-foreground mb-3">For individuals</p>
-              <p className="text-2xl font-bold mb-4">$0<span className="text-xs font-normal text-muted-foreground">/mo</span></p>
-              <div className="space-y-2 text-xs">
-                <div className="flex items-center gap-2"><Check className="w-3 h-3 text-[#059669]" /> Unlimited local notes</div>
-                <div className="flex items-center gap-2"><Check className="w-3 h-3 text-[#059669]" /> Unlimited todo lists</div>
-                <div className="flex items-center gap-2"><Check className="w-3 h-3 text-[#059669]" /> Sync up to 2 devices</div>
-                <div className="flex items-center gap-2"><Check className="w-3 h-3 text-[#059669]" /> Share with 1 person</div>
-              </div>
-              <Button variant="outline" className="w-full mt-4 rounded-xl" disabled>Current Plan</Button>
-            </div>
-            {/* Premium Plan */}
-            <div className="rounded-2xl border-2 border-[#d97706]/40 p-5 bg-gradient-to-b from-[#d97706]/5 to-transparent relative overflow-hidden">
-              <Badge className="absolute top-3 right-3 text-[9px] bg-gradient-to-r from-[#d97706] to-[#f59e0b] text-white border-0">Popular</Badge>
-              <h4 className="font-semibold text-sm mb-0.5">Premium</h4>
-              <p className="text-[10px] text-muted-foreground mb-3">For power users</p>
-              <p className="text-2xl font-bold mb-4">$9<span className="text-xs font-normal text-muted-foreground">/mo</span></p>
-              <div className="space-y-2 text-xs">
-                <div className="flex items-center gap-2"><Check className="w-3 h-3 text-[#059669]" /> Everything in Free</div>
-                <div className="flex items-center gap-2"><Check className="w-3 h-3 text-[#059669]" /> Unlimited devices</div>
-                <div className="flex items-center gap-2"><Check className="w-3 h-3 text-[#059669]" /> Unlimited collaborators</div>
-                <div className="flex items-center gap-2"><Check className="w-3 h-3 text-[#059669]" /> Version history</div>
-                <div className="flex items-center gap-2"><Check className="w-3 h-3 text-[#059669]" /> Priority support</div>
-              </div>
-              <Button className="w-full mt-4 rounded-xl bg-gradient-to-r from-[#d97706] to-[#f59e0b] text-white hover:from-[#d97706]/90 hover:to-[#f59e0b]/90">Upgrade Now</Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+
     </div>
   )
 }

@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { toast } from 'sonner'
-import { Plus, CheckSquare, ShieldCheck, Loader2, PenLine, LogOut, Sun, Moon } from 'lucide-react'
+import { Plus, CheckSquare, ShieldCheck, Loader2, PenLine, LogOut, Sun, Moon, Search } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { formatDistanceToNow } from 'date-fns'
 
@@ -41,6 +41,7 @@ export function TodosList() {
   const [createOpen, setCreateOpen] = useState(false)
   const [newTitle, setNewTitle] = useState('')
   const [newWorkspace, setNewWorkspace] = useState<string>('')
+  const [searchQuery, setSearchQuery] = useState('')
   const { theme, setTheme } = useTheme()
 
   const [decryptedTodos, setDecryptedTodos] = useState<Map<string, string>>(new Map())
@@ -106,7 +107,18 @@ export function TodosList() {
 
   const activeTodos = todoLists
     .filter((t) => !t.isArchived)
-    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+    .sort((a, b) => {
+      // Pinned items first, then by updatedAt desc
+      if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1
+      return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+    })
+
+  const filteredTodos = searchQuery
+    ? activeTodos.filter((t) => {
+        const decrypted = decryptedTodos.get(t.id)
+        return decrypted?.toLowerCase().includes(searchQuery.toLowerCase())
+      })
+    : activeTodos
 
   return (
     <div className="min-h-screen flex bg-background">
@@ -136,6 +148,16 @@ export function TodosList() {
                 </Tooltip>
               </TooltipProvider>
             )}
+          </div>
+
+          <div className="relative max-w-[200px] sm:max-w-[280px] mx-3 shrink-0">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground/60 pointer-events-none" />
+            <Input
+              placeholder="Search todos..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="h-8 text-xs rounded-lg pl-8"
+            />
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
@@ -180,9 +202,17 @@ export function TodosList() {
                   Create Todo List
                 </Button>
               </motion.div>
+            ) : filteredTodos.length === 0 ? (
+              <motion.div initial="hidden" animate="visible" variants={fadeUp} className="flex flex-col items-center justify-center py-20">
+                <div className="w-16 h-16 rounded-2xl bg-muted/50 flex items-center justify-center mb-4">
+                  <Search className="w-8 h-8 text-muted-foreground/40" />
+                </div>
+                <h3 className="text-lg font-semibold mb-1">No todo lists match your search</h3>
+                <p className="text-sm text-muted-foreground mb-4">Try a different search term</p>
+              </motion.div>
             ) : (
               <motion.div initial="hidden" animate="visible" variants={stagger} className="space-y-2">
-                {activeTodos.map((todo, index) => {
+                {filteredTodos.map((todo, index) => {
                   const completed = todo.items.filter((i) => i.completed).length
                   const total = todo.items.length
                   const progress = total > 0 ? (completed / total) * 100 : 0

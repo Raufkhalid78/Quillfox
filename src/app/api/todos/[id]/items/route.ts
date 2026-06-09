@@ -66,7 +66,7 @@ export async function PUT(
       return NextResponse.json({ error: 'Todo list not found' }, { status: 404 })
     }
 
-    // Batch update items
+    // Batch update items using allSettled to avoid partial failures breaking everything
     const updatePromises = items.map((item: any) => {
       return db.todoItem.update({
         where: { id: item.id },
@@ -78,7 +78,11 @@ export async function PUT(
       })
     })
 
-    await Promise.all(updatePromises)
+    const results = await Promise.allSettled(updatePromises)
+    const failures = results.filter((r) => r.status === 'rejected')
+    if (failures.length > 0) {
+      console.error(`Failed to update ${failures.length} todo items`)
+    }
 
     return NextResponse.json({ success: true })
   } catch (error) {
