@@ -74,7 +74,16 @@ export async function decrypt(
   key: CryptoKey
 ): Promise<string> {
   if (!encoded) return encoded
-  const combined = Uint8Array.from(atob(encoded), (c) => c.charCodeAt(0))
+  const binary = atob(encoded)
+  const combined = new Uint8Array(binary.length)
+  // Chunked conversion to avoid stack overflow on large data
+  const chunkSize = 0x8000
+  for (let i = 0; i < binary.length; i += chunkSize) {
+    const chunk = binary.substring(i, i + chunkSize)
+    for (let j = 0; j < chunk.length; j++) {
+      combined[i + j] = chunk.charCodeAt(j)
+    }
+  }
   const salt = combined.slice(0, SALT_LENGTH)
   const iv = combined.slice(SALT_LENGTH, SALT_LENGTH + IV_LENGTH)
   const ciphertext = combined.slice(SALT_LENGTH + IV_LENGTH)
@@ -99,5 +108,15 @@ export function isEncrypted(value: string): boolean {
 
 // Convert base64 salt string back to Uint8Array
 export function base64ToUint8Array(base64: string): Uint8Array {
-  return Uint8Array.from(atob(base64), (c) => c.charCodeAt(0))
+  const binary = atob(base64)
+  const bytes = new Uint8Array(binary.length)
+  // Chunked conversion to avoid "Maximum call stack size exceeded" on large data
+  const chunkSize = 0x8000
+  for (let i = 0; i < binary.length; i += chunkSize) {
+    const chunk = binary.substring(i, i + chunkSize)
+    for (let j = 0; j < chunk.length; j++) {
+      bytes[i + j] = chunk.charCodeAt(j)
+    }
+  }
+  return bytes
 }

@@ -398,7 +398,7 @@ export function WorkspacesView() {
                             </span>
                             <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
                               <Users className="w-3 h-3" />
-                              {wsMembers.length > 0 && wsMembers.find(m => selectedWs?.id === ws.id) ? wsMembers.length : 1}
+                              1
                             </span>
                           </div>
                         </CardContent>

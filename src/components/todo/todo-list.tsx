@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAppStore } from '@/stores/app-store'
-import { encryptTodoTitle, decryptTodoTitle, decryptNoteTitle } from '@/lib/encrypted-api'
+import { encryptTodoTitle, decryptTodoTitle } from '@/lib/encrypted-api'
 import { useCollabSocket } from '@/hooks/use-collab-socket'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -88,7 +88,7 @@ export function TodoList() {
         if (res.ok) {
           const data = await res.json()
           // Decrypt title and item titles
-          const decryptedTitle = await decryptNoteTitle(data.title)
+          const decryptedTitle = await decryptTodoTitle(data.title)
           const decryptedItems = await Promise.all(
             data.items
               .sort((a: any, b: any) => a.order - b.order)
@@ -101,11 +101,11 @@ export function TodoList() {
           setItems(decryptedItems)
         } else {
           toast.error('Failed to load todo list')
-          setView('dashboard')
+          setView('todos')
         }
       } catch {
         toast.error('Network error')
-        setView('dashboard')
+        setView('todos')
       }
       setInitialLoad(false)
     }
@@ -312,7 +312,7 @@ export function TodoList() {
         if (newArchived) {
           const updated = todoLists.filter((t) => t.id !== selectedTodoListId)
           setTodoListsAction(updated)
-          setView('dashboard')
+          setView('todos')
         } else {
           const updated = todoLists.map((t) => t.id === selectedTodoListId ? { ...t, isArchived: false } : t)
           setTodoListsAction(updated)
@@ -334,7 +334,7 @@ export function TodoList() {
   }
 
   useEffect(() => {
-    if (!todoList && !initialLoad) setView('dashboard')
+    if (!todoList && !initialLoad) setView('todos')
   }, [todoList, initialLoad, setView])
 
   if (!todoList && !initialLoad) return null
@@ -351,7 +351,7 @@ export function TodoList() {
             <Button
               variant="ghost"
               size="icon"
-              onClick={() => setView('dashboard')}
+              onClick={() => setView('todos')}
               className="shrink-0 h-8 w-8"
             >
               <ArrowLeft className="w-5 h-5" />

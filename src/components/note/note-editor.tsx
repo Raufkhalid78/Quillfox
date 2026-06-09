@@ -60,11 +60,11 @@ export function NoteEditor() {
           setInitialLoad(false)
         } else {
           toast.error('Failed to load note')
-          setView('dashboard')
+          setView('notes')
         }
       } catch {
         toast.error('Network error')
-        setView('dashboard')
+        setView('notes')
       }
       setInitialLoad(false)
     }
@@ -177,7 +177,7 @@ export function NoteEditor() {
         if (newArchived) {
           const updated = notes.filter((n) => n.id !== selectedNoteId)
           setNotesAction(updated)
-          setView('dashboard')
+          setView('notes')
         } else {
           const updated = notes.map((n) => n.id === selectedNoteId ? { ...n, isArchived: false } : n)
           setNotesAction(updated)
@@ -219,15 +219,24 @@ export function NoteEditor() {
   const handleSaveVersion = async () => {
     if (!selectedNoteId) return
     try {
+      // Encrypt before saving version
+      const encryptedTitle = await encryptNoteTitle(title)
+      const encryptedContent = await encryptNoteContent(content)
       const res = await fetch(`/api/notes/${selectedNoteId}/versions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, content }),
+        body: JSON.stringify({ title: encryptedTitle, content: encryptedContent }),
       })
       if (res.ok) {
+        const newVersion = await res.json()
+        setVersions([newVersion, ...versions])
+        // Also add decrypted version to the decrypted list
+        setDecryptedVersions((prev) => [{
+          ...newVersion,
+          title,
+          content,
+        }, ...prev])
         toast.success('Version saved')
-        const updatedVersions = await res.json()
-        setVersions([updatedVersions, ...versions])
       }
     } catch { toast.error('Failed to save version') }
   }
@@ -246,7 +255,7 @@ export function NoteEditor() {
   }
 
   useEffect(() => {
-    if (!note && !initialLoad) setView('dashboard')
+    if (!note && !initialLoad) setView('notes')
   }, [note, initialLoad, setView])
 
   if (!note && !initialLoad) return null
@@ -268,7 +277,7 @@ export function NoteEditor() {
             <Button
               variant="ghost"
               size="icon"
-              onClick={() => setView('dashboard')}
+              onClick={() => setView('notes')}
               className="shrink-0 h-8 w-8"
             >
               <ArrowLeft className="w-5 h-5" />

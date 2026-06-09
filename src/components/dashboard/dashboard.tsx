@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAppStore, type WorkspaceData } from '@/stores/app-store'
-import { decryptNoteContent, decryptNoteTitle, encryptNoteTitle, encryptTodoTitle } from '@/lib/encrypted-api'
+import { decryptNoteContent, decryptNoteTitle, decryptTodoTitle, encryptNoteTitle, encryptTodoTitle } from '@/lib/encrypted-api'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -130,7 +130,7 @@ export function Dashboard() {
       )
       await Promise.all(
         todoLists.map(async (t) => {
-          const title = await decryptNoteTitle(t.title)
+          const title = await decryptTodoTitle(t.title)
           todoMap.set(t.id, title)
         })
       )
