@@ -63,3 +63,38 @@ export async function decryptTodoTitle(title: string): Promise<string> {
     return title
   }
 }
+
+export async function encryptWorkspaceTitle(title: string): Promise<string> {
+  const key = getKey()
+  if (!key) return title
+  return encrypt(title, key)
+}
+
+export async function decryptWorkspaceTitle(title: string): Promise<string> {
+  const key = getKey()
+  if (!key || !title) return title
+  if (!isEncrypted(title)) return title
+  try {
+    return await decrypt(title, key)
+  } catch {
+    return title
+  }
+}
+
+export async function encryptWorkspaceDescription(desc: string | null): Promise<string | null> {
+  if (!desc) return desc
+  const key = getKey()
+  if (!key) return desc
+  return encrypt(desc, key)
+}
+
+export async function decryptWorkspaceDescription(desc: string | null): Promise<string | null> {
+  const key = getKey()
+  if (!key || !desc) return desc
+  if (!isEncrypted(desc)) return desc
+  try {
+    return await decrypt(desc, key)
+  } catch {
+    return desc
+  }
+}

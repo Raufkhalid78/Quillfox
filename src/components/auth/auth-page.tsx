@@ -1,16 +1,18 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAppStore } from '@/stores/app-store'
 import { deriveKey, generateSalt } from '@/lib/e2ee'
+import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from 'sonner'
-import { Sparkles, Loader2, ShieldCheck, PenTool, ArrowLeft, Mail } from 'lucide-react'
+import { Sparkles, Loader2, ShieldCheck, PenTool, ArrowLeft, Mail, Eye, EyeOff, Moon, Sun } from 'lucide-react'
+import { useTheme } from 'next-themes'
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -58,13 +60,33 @@ export function AuthPage() {
   const [registerName, setRegisterName] = useState('')
   const [registerEmail, setRegisterEmail] = useState('')
   const [registerPassword, setRegisterPassword] = useState('')
+  const [showLoginPassword, setShowLoginPassword] = useState(false)
+  const [showRegisterPassword, setShowRegisterPassword] = useState(false)
+  const [showRecoveryPassword, setShowRecoveryPassword] = useState(false)
   // Forgot password state
   const [showForgotPassword, setShowForgotPassword] = useState(false)
   const [forgotEmail, setForgotEmail] = useState('')
   const [forgotSent, setForgotSent] = useState(false)
   const [isForgotLoading, setIsForgotLoading] = useState(false)
+  const [isRecovery, setIsRecovery] = useState(false)
+  const [recoveryPassword, setRecoveryPassword] = useState('')
   const login = useAppStore((s) => s.login)
   const setEncryptionKey = useAppStore((s) => s.setEncryptionKey)
+  const { theme, setTheme } = useTheme()
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search)
+      if (params.get('recovery') === 'true') {
+        setIsRecovery(true)
+      }
+    }
+  }, [])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -74,26 +96,53 @@ export function AuthPage() {
     }
     setIsLoading(true)
     try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: loginEmail.trim(), password: loginPassword }),
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: loginEmail.trim(),
+        password: loginPassword,
       })
-      const data = await res.json()
-      if (!res.ok) {
-        toast.error(data.error || 'Login failed')
+      if (error) {
+        toast.error(error.message || 'Login failed')
         return
       }
-      login({ id: data.user.id, email: data.user.email, name: data.user.name })
+      const user = data.user
+      if (!user) {
+        toast.error('Login failed')
+        return
+      }
+      const salt = user.user_metadata?.salt
+      const name = user.user_metadata?.name || null
+      const wrappedMasterKeyObj = user.user_metadata?.wrapped_master_key
 
-      // Derive encryption key from password + salt
-      if (data.user.salt) {
+      login({ 
+        id: user.id, 
+        email: user.email!, 
+        name: name,
+        createdAt: user.created_at
+      })
+
+      // KEK/MEK Architecture: Unwrap master key using password-derived KEK
+      if (salt && wrappedMasterKeyObj) {
         try {
-          const saltArray = Uint8Array.from(atob(data.user.salt), (c) => c.charCodeAt(0))
-          const key = await deriveKey(loginPassword, saltArray)
-          setEncryptionKey(key, data.user.salt)
-        } catch {
+          const saltArray = Uint8Array.from(atob(salt), (c) => c.charCodeAt(0))
+          const { ciphertext, iv } = wrappedMasterKeyObj
+          const { unwrapEncryptionKey } = await import('@/lib/e2ee')
+          const masterKey = await unwrapEncryptionKey(ciphertext, iv, loginPassword, saltArray)
+          setEncryptionKey(masterKey, salt)
+        } catch (e) {
+          console.error(e)
           toast.error('Failed to setup encryption. Your data may not be decrypted.')
+        }
+      } else {
+        // Fallback for old users without KEK/MEK
+        if (salt) {
+           try {
+             const saltArray = Uint8Array.from(atob(salt), (c) => c.charCodeAt(0))
+             const { deriveKey } = await import('@/lib/e2ee')
+             const key = await deriveKey(loginPassword, saltArray)
+             setEncryptionKey(key, salt)
+           } catch {
+             toast.error('Failed to setup encryption.')
+           }
         }
       }
 
@@ -125,31 +174,49 @@ export function AuthPage() {
       }
       const saltBase64 = btoa(saltBinary)
 
-      const res = await fetch('/api/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: registerName.trim(),
-          email: registerEmail.trim(),
-          password: registerPassword,
-          salt: saltBase64,
-        }),
+      // KEK/MEK Architecture: Generate MEK and wrap with KEK
+      const { generateMasterKey, wrapEncryptionKey } = await import('@/lib/e2ee')
+      const masterKey = await generateMasterKey()
+      const wrappedMasterKeyObj = await wrapEncryptionKey(masterKey, registerPassword, salt)
+
+      const { data, error } = await supabase.auth.signUp({
+        email: registerEmail.trim(),
+        password: registerPassword,
+        options: {
+          data: {
+            name: registerName.trim(),
+            salt: saltBase64,
+            wrapped_master_key: wrappedMasterKeyObj, // store MEK wrapped by password
+          }
+        }
       })
-      const data = await res.json()
-      if (!res.ok) {
-        toast.error(data.error || 'Registration failed')
+
+      if (error) {
+        toast.error(error.message || 'Registration failed')
         return
       }
-      login({ id: data.user.id, email: data.user.email, name: data.user.name })
 
-      // Derive encryption key from password + salt
-      try {
-        const key = await deriveKey(registerPassword, salt)
-        setEncryptionKey(key, saltBase64)
-      } catch {
-        toast.error('Failed to setup encryption.')
+      const user = data.user
+      if (!user) {
+        toast.error('Registration failed')
+        return
       }
 
+      if (!data.session) {
+        toast.success('Registration successful! Please check your email to verify your account.')
+        setActiveTab('login')
+        setLoginEmail(registerEmail.trim())
+        return
+      }
+
+      login({ 
+        id: user.id, 
+        email: user.email!, 
+        name: registerName.trim(),
+        createdAt: user.created_at
+      })
+
+      setEncryptionKey(masterKey, saltBase64)
       toast.success('Account created successfully!')
     } catch {
       toast.error('Network error. Please try again.')
@@ -166,15 +233,13 @@ export function AuthPage() {
     }
     setIsForgotLoading(true)
     try {
-      const res = await fetch('/api/auth/forgot-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: forgotEmail.trim() }),
+      const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail.trim(), {
+        redirectTo: `${window.location.origin}/?recovery=true`,
       })
-      if (res.ok) {
-        setForgotSent(true)
+      if (error) {
+        toast.error(error.message || 'Something went wrong. Please try again.')
       } else {
-        toast.error('Something went wrong. Please try again.')
+        setForgotSent(true)
       }
     } catch {
       toast.error('Network error. Please try again.')
@@ -189,6 +254,29 @@ export function AuthPage() {
     setForgotSent(false)
   }
 
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (recoveryPassword.length < 6) {
+      toast.error('Password must be at least 6 characters')
+      return
+    }
+    setIsLoading(true)
+    try {
+      const { error } = await supabase.auth.updateUser({ password: recoveryPassword })
+      if (error) {
+        toast.error(error.message || 'Failed to update password')
+        return
+      }
+      toast.success('Password updated! Please log in.')
+      setIsRecovery(false)
+      window.history.replaceState({}, document.title, window.location.pathname)
+    } catch {
+      toast.error('Network error')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-mesh-light dark:bg-gradient-mesh-dark relative overflow-hidden noise-overlay">
       {/* Animated Gradient Orbs */}
@@ -197,6 +285,24 @@ export function AuthPage() {
       <div className="gradient-orb gradient-orb-violet w-[300px] h-[300px] top-1/2 right-1/4 animate-float-slow" />
       <div className="gradient-orb gradient-orb-purple w-[250px] h-[250px] top-1/4 right-1/3 animate-float" />
       <div className="gradient-orb gradient-orb-coral w-[200px] h-[200px] bottom-1/4 left-1/4 animate-float-delayed" />
+
+      {/* Theme Toggle */}
+      {mounted && (
+        <div className="absolute top-6 right-6 z-50">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            className="w-10 h-10 rounded-full bg-white/10 dark:bg-black/20 backdrop-blur-md border border-white/20 dark:border-white/10 hover:bg-white/20 dark:hover:bg-black/40 transition-colors"
+          >
+            {theme === 'dark' ? (
+              <Sun className="w-5 h-5 text-yellow-300" />
+            ) : (
+              <Moon className="w-5 h-5 text-slate-700" />
+            )}
+          </Button>
+        </div>
+      )}
 
       {/* Spinning gradient ring (subtle) */}
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full opacity-[0.04] animate-spin-slow pointer-events-none"
@@ -275,7 +381,59 @@ export function AuthPage() {
               <CardDescription>Sign in or create a new account</CardDescription>
             </CardHeader>
             <CardContent className="px-6 pb-6">
-              <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'login' | 'register')}>
+              {isRecovery ? (
+                <div className="space-y-6">
+                  <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-600 dark:text-amber-400">
+                    <strong>Warning:</strong> Resetting your password will result in the loss of your end-to-end encrypted notes unless you have a backup of your old encryption key.
+                  </div>
+                  <form onSubmit={handleResetPassword} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="recovery-password">New Password</Label>
+                      <div className="relative">
+                        <Input
+                          id="recovery-password"
+                          type={showRecoveryPassword ? 'text' : 'password'}
+                          value={recoveryPassword}
+                          onChange={(e) => setRecoveryPassword(e.target.value)}
+                          placeholder="At least 6 characters"
+                          disabled={isLoading}
+                          className="h-11 rounded-xl pr-10"
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="absolute right-0 top-0 h-11 w-11 text-muted-foreground hover:text-foreground hover:bg-transparent"
+                          onClick={() => setShowRecoveryPassword(!showRecoveryPassword)}
+                          tabIndex={-1}
+                        >
+                          {showRecoveryPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </Button>
+                      </div>
+                    </div>
+                    <Button
+                      type="submit"
+                      className="w-full h-11 rounded-xl btn-gradient btn-shine"
+                      disabled={isLoading}
+                    >
+                      {isLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                      Update Password
+                    </Button>
+                  </form>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-full"
+                    onClick={() => {
+                      setIsRecovery(false)
+                      window.history.replaceState({}, document.title, window.location.pathname)
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              ) : (
+                <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'login' | 'register')}>
                 {/* Custom tab design with sliding indicator */}
                 <div className="relative mb-6">
                   <TabsList className="grid w-full grid-cols-2 bg-muted/50 h-11 p-1 rounded-xl">
@@ -404,13 +562,23 @@ export function AuthPage() {
                           <div className="relative">
                             <Input
                               id="login-password"
-                              type="password"
+                              type={showLoginPassword ? 'text' : 'password'}
                               placeholder="Enter your password"
                               value={loginPassword}
                               onChange={(e) => setLoginPassword(e.target.value)}
                               disabled={isLoading}
-                              className="h-11 glass-input pl-4 pr-4 rounded-xl"
+                              className="h-11 glass-input pl-4 pr-10 rounded-xl"
                             />
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="absolute right-0 top-0 h-11 w-11 text-muted-foreground hover:text-foreground hover:bg-transparent"
+                              onClick={() => setShowLoginPassword(!showLoginPassword)}
+                              tabIndex={-1}
+                            >
+                              {showLoginPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                            </Button>
                           </div>
                           <div className="flex justify-end">
                             <button
@@ -496,13 +664,23 @@ export function AuthPage() {
                           <div className="relative">
                             <Input
                               id="register-password"
-                              type="password"
+                              type={showRegisterPassword ? 'text' : 'password'}
                               placeholder="Min. 6 characters"
                               value={registerPassword}
                               onChange={(e) => setRegisterPassword(e.target.value)}
                               disabled={isLoading}
-                              className="h-11 glass-input pl-4 pr-4 rounded-xl"
+                              className="h-11 glass-input pl-4 pr-10 rounded-xl"
                             />
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="absolute right-0 top-0 h-11 w-11 text-muted-foreground hover:text-foreground hover:bg-transparent"
+                              onClick={() => setShowRegisterPassword(!showRegisterPassword)}
+                              tabIndex={-1}
+                            >
+                              {showRegisterPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                            </Button>
                           </div>
                         </div>
                         <motion.div
@@ -544,7 +722,8 @@ export function AuthPage() {
                     </TabsContent>
                   </motion.div>
                 </AnimatePresence>
-              </Tabs>
+                </Tabs>
+              )}
             </CardContent>
           </Card>
         </motion.div>

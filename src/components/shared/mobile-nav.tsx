@@ -40,6 +40,7 @@ export function MobileNav() {
   const currentView = useAppStore((s) => s.currentView)
   const setView = useAppStore((s) => s.setView)
   const logout = useAppStore((s) => s.logout)
+  const userTier = useAppStore((s) => s.userTier)
   const { theme, setTheme } = useTheme()
 
   // Don't render on mobile when user is on auth view
@@ -119,17 +120,19 @@ export function MobileNav() {
             ))}
 
             {/* Pricing */}
-            <button
-              onClick={handlePricingClick}
-              className={`flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-colors w-full ${
-                currentView === 'pricing'
-                  ? 'bg-[#d97706]/10 text-[#d97706]'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-accent'
-              }`}
-            >
-              <Crown className="h-5 w-5 shrink-0" />
-              <span className="font-medium">Pricing</span>
-            </button>
+            {userTier === 'free' && (
+              <button
+                onClick={handlePricingClick}
+                className={`flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-colors w-full ${
+                  currentView === 'pricing'
+                    ? 'bg-[#d97706]/10 text-[#d97706]'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-accent'
+                }`}
+              >
+                <Crown className="h-5 w-5 shrink-0" />
+                <span className="font-medium">Pricing</span>
+              </button>
+            )}
           </nav>
 
           {/* Bottom actions: divider */}

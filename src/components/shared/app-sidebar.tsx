@@ -35,6 +35,7 @@ const navItems = [
 export function AppSidebar({ activeView, onUpgradeClick }: AppSidebarProps) {
   const setView = useAppStore((s) => s.setView)
   const logout = useAppStore((s) => s.logout)
+  const userTier = useAppStore((s) => s.userTier)
   const { theme, setTheme } = useTheme()
 
   const isActive = (key: string) => {
@@ -97,25 +98,27 @@ export function AppSidebar({ activeView, onUpgradeClick }: AppSidebarProps) {
           ))}
         </TooltipProvider>
 
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className={`w-10 h-10 rounded-xl transition-colors ${
-                  activeView === 'pricing'
-                    ? 'bg-[#d97706]/10 text-[#d97706]'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-                onClick={handleUpgrade}
-              >
-                <Crown className="w-4 h-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="right">Pricing</TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+        {userTier === 'free' && (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className={`w-10 h-10 rounded-xl transition-colors ${
+                    activeView === 'pricing'
+                      ? 'bg-[#d97706]/10 text-[#d97706]'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                  onClick={handleUpgrade}
+                >
+                  <Crown className="w-4 h-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="right">Pricing</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
       </nav>
 
       {/* Bottom actions */}

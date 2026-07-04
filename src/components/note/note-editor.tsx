@@ -4,6 +4,8 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { motion } from 'framer-motion'
 import { useAppStore } from '@/stores/app-store'
 import { encryptNoteContent, encryptNoteTitle, decryptNoteContent, decryptNoteTitle } from '@/lib/encrypted-api'
+import { logActivity } from '@/lib/activity'
+import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -22,6 +24,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { ArrowLeft, Loader2, ShieldCheck, ShieldAlert, Pin, Archive, ArchiveRestore, Share2, History, MoreVertical, Trash2 } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { formatDistanceToNow } from 'date-fns'
+import { NotionEditor } from './notion-editor'
 
 export function NoteEditor() {
   const currentUser = useAppStore((s) => s.currentUser)
@@ -32,36 +35,50 @@ export function NoteEditor() {
   const setView = useAppStore((s) => s.setView)
   const isEncryptedSession = useAppStore((s) => s.isEncryptedSession)
 
-  const [title, setTitle] = useState('')
-  const [content, setContent] = useState('')
+  const note = notes.find((n) => n.id === selectedNoteId)
+
+  const [title, setTitle] = useState(note?.title || '')
+  const [content, setContent] = useState(note?.content || '')
+  const [initialLoad, setInitialLoad] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
-  const [initialLoad, setInitialLoad] = useState(true)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [versions, setVersions] = useState<Array<{ id: string; title: string; content: string; version: number; createdAt: string }>>([])
   const [decryptedVersions, setDecryptedVersions] = useState<Array<{ id: string; title: string; content: string; version: number; createdAt: string }>>([])
+  
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const titleRef = useRef(title)
+  const contentRef = useRef(content)
+  const lastVersionSaveTime = useRef(Date.now())
+  const lastLocalSaveTimeRef = useRef<number>(0)
 
-  const note = notes.find((n) => n.id === selectedNoteId)
+  useEffect(() => {
+    titleRef.current = title
+    contentRef.current = content
+  }, [title, content])
 
-  // Load note data & decrypt
+  // Load note data & decrypt + subscribe to realtime updates
   useEffect(() => {
     if (!selectedNoteId) return
     setInitialLoad(true)
     const loadNote = async () => {
       try {
-        const res = await fetch(`/api/notes/${selectedNoteId}`)
-        if (res.ok) {
-          const data = await res.json()
-          // Decrypt title and content if encrypted
-          const decryptedTitle = await decryptNoteTitle(data.title)
-          const decryptedContent = await decryptNoteContent(data.content || '')
-          setTitle(decryptedTitle)
-          setContent(decryptedContent)
-          setInitialLoad(false)
-        } else {
+        const { data, error } = await supabase
+          .from('notes')
+          .select('*')
+          .eq('id', selectedNoteId)
+          .single()
+
+        if (error || !data) {
           toast.error('Failed to load note')
           setView('notes')
+          return
         }
+
+        const decryptedTitle = await decryptNoteTitle(data.title)
+        const decryptedContent = await decryptNoteContent(data.content || '')
+        setTitle(decryptedTitle)
+        setContent(decryptedContent)
+        setInitialLoad(false)
       } catch {
         toast.error('Network error')
         setView('notes')
@@ -69,6 +86,37 @@ export function NoteEditor() {
       setInitialLoad(false)
     }
     loadNote()
+
+    // Subscribe to realtime updates for this note
+    const channel = supabase
+      .channel(`note-${selectedNoteId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'notes',
+          filter: `id=eq.${selectedNoteId}`,
+        },
+        async (payload) => {
+          // Only sync if the user is not actively typing and hasn't just saved
+          if (!saveTimeoutRef.current && Date.now() - lastLocalSaveTimeRef.current > 2000) {
+            try {
+              const decTitle = await decryptNoteTitle(payload.new.title)
+              const decContent = await decryptNoteContent(payload.new.content || '')
+              setTitle((prev) => (prev === decTitle ? prev : decTitle))
+              setContent((prev) => (prev === decContent ? prev : decContent))
+            } catch (err) {
+              console.warn('Failed to decrypt realtime note update', err)
+            }
+          }
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
   }, [selectedNoteId, setView])
 
   // Auto-save debounced (with encryption)
@@ -76,26 +124,57 @@ export function NoteEditor() {
     if (!selectedNoteId || isSaving) return
     setIsSaving(true)
     try {
+      const currentTitle = titleRef.current
+      const currentContent = contentRef.current
+      
       // Encrypt before sending to server
-      const encryptedTitle = await encryptNoteTitle(title)
-      const encryptedContent = await encryptNoteContent(content)
-      const res = await fetch(`/api/notes/${selectedNoteId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: encryptedTitle, content: encryptedContent }),
-      })
-      if (!res.ok) {
+      const encryptedTitle = await encryptNoteTitle(currentTitle)
+      const encryptedContent = await encryptNoteContent(currentContent)
+      const { error } = await supabase
+        .from('notes')
+        .update({
+          title: encryptedTitle,
+          content: encryptedContent,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', selectedNoteId)
+
+      if (error) {
         toast.error('Failed to save')
       } else {
+        lastLocalSaveTimeRef.current = Date.now()
         updateNoteContent(selectedNoteId, encryptedContent)
         updateNoteTitle(selectedNoteId, encryptedTitle)
+        logActivity('note_update')
+
+        // Auto versioning every 15 minutes
+        const now = Date.now()
+        if (now - lastVersionSaveTime.current > 15 * 60 * 1000) {
+          lastVersionSaveTime.current = now
+          const { data: vList } = await supabase
+            .from('note_versions')
+            .select('version')
+            .eq('note_id', selectedNoteId)
+            .order('version', { ascending: false })
+            .limit(1)
+          
+          const nextVer = (vList && vList.length > 0 ? vList[0].version : 0) + 1
+          const versionId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2)
+          await supabase.from('note_versions').insert({
+            id: versionId,
+            note_id: selectedNoteId,
+            title: encryptedTitle,
+            content: encryptedContent,
+            version: nextVer,
+          })
+        }
       }
     } catch {
       toast.error('Network error')
     } finally {
       setIsSaving(false)
     }
-  }, [selectedNoteId, title, content, isSaving, updateNoteContent, updateNoteTitle])
+  }, [selectedNoteId, isSaving, updateNoteContent, updateNoteTitle])
 
   const handleContentChange = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -105,6 +184,7 @@ export function NoteEditor() {
         clearTimeout(saveTimeoutRef.current)
       }
       saveTimeoutRef.current = setTimeout(() => {
+        saveTimeoutRef.current = null
         saveContent()
       }, 1500)
     },
@@ -119,6 +199,7 @@ export function NoteEditor() {
         clearTimeout(saveTimeoutRef.current)
       }
       saveTimeoutRef.current = setTimeout(() => {
+        saveTimeoutRef.current = null
         saveContent()
       }, 1500)
     },
@@ -130,15 +211,20 @@ export function NoteEditor() {
   const handleDelete = async () => {
     if (!selectedNoteId) return
     try {
-      const res = await fetch(`/api/notes/${selectedNoteId}`, {
-        method: 'DELETE',
-      })
-      if (res.ok) {
-        removeNote(selectedNoteId)
-        toast.success('Note deleted')
-        setDeleteConfirmOpen(false)
-        setView('notes')
+      const { error } = await supabase
+        .from('notes')
+        .delete()
+        .eq('id', selectedNoteId)
+
+      if (error) {
+        toast.error(error.message || 'Failed to delete note')
+        return
       }
+
+      removeNote(selectedNoteId)
+      toast.success('Note deleted')
+      setDeleteConfirmOpen(false)
+      setView('notes')
     } catch {
       toast.error('Failed to delete note')
     }
@@ -151,15 +237,20 @@ export function NoteEditor() {
     if (!selectedNoteId || !note) return
     const newPinned = !note.isPinned
     try {
-      const res = await fetch(`/api/notes/${selectedNoteId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ isPinned: newPinned }),
-      })
-      if (res.ok) {
+      const { error } = await supabase
+        .from('notes')
+        .update({
+          is_pinned: newPinned,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', selectedNoteId)
+
+      if (!error) {
         const updated = notes.map((n) => n.id === selectedNoteId ? { ...n, isPinned: newPinned } : n)
         setNotesAction(updated)
         toast.success(newPinned ? 'Note pinned' : 'Note unpinned')
+      } else {
+        toast.error('Failed to update')
       }
     } catch { toast.error('Failed to update') }
   }
@@ -168,12 +259,15 @@ export function NoteEditor() {
     if (!selectedNoteId || !note) return
     const newArchived = !note.isArchived
     try {
-      const res = await fetch(`/api/notes/${selectedNoteId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ isArchived: newArchived }),
-      })
-      if (res.ok) {
+      const { error } = await supabase
+        .from('notes')
+        .update({
+          is_archived: newArchived,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', selectedNoteId)
+
+      if (!error) {
         if (newArchived) {
           const updated = notes.filter((n) => n.id !== selectedNoteId)
           setNotesAction(updated)
@@ -183,61 +277,96 @@ export function NoteEditor() {
           setNotesAction(updated)
         }
         toast.success(newArchived ? 'Note archived' : 'Note restored')
+      } else {
+        toast.error('Failed to update')
       }
     } catch { toast.error('Failed to update') }
   }
 
-  const handleShare = async () => {
-    if (!selectedNoteId) return
-    const url = `${window.location.origin}/?note=${selectedNoteId}`
-    try {
-      await navigator.clipboard.writeText(url)
-      toast.success('Share link copied to clipboard!')
-    } catch {
-      toast.error('Failed to copy link')
-    }
-  }
 
   const handleOpenHistory = async () => {
     if (!selectedNoteId) return
     try {
-      const res = await fetch(`/api/notes/${selectedNoteId}/versions`)
-      if (res.ok) {
-        const data = await res.json()
-        const decrypted = await Promise.all(data.map(async (v) => ({
-          ...v,
-          title: await decryptNoteTitle(v.title),
-          content: await decryptNoteContent(v.content || ''),
-        })))
-        setDecryptedVersions(decrypted)
-        setVersions(data)
-        setHistoryOpen(true)
+      const { data, error } = await supabase
+        .from('note_versions')
+        .select('*')
+        .eq('note_id', selectedNoteId)
+        .order('version', { ascending: false })
+
+      if (error) {
+        toast.error('Failed to load history')
+        return
       }
+
+      const formatted = data.map((v: any) => ({
+        id: v.id,
+        title: v.title,
+        content: v.content,
+        version: v.version,
+        createdAt: v.created_at,
+      }))
+
+      const decrypted = await Promise.all(formatted.map(async (v: any) => ({
+        ...v,
+        title: await decryptNoteTitle(v.title),
+        content: await decryptNoteContent(v.content || ''),
+      })))
+
+      setDecryptedVersions(decrypted)
+      setVersions(formatted)
+      setHistoryOpen(true)
     } catch { toast.error('Failed to load history') }
   }
 
   const handleSaveVersion = async () => {
     if (!selectedNoteId) return
     try {
-      // Encrypt before saving version
       const encryptedTitle = await encryptNoteTitle(title)
       const encryptedContent = await encryptNoteContent(content)
-      const res = await fetch(`/api/notes/${selectedNoteId}/versions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: encryptedTitle, content: encryptedContent }),
-      })
-      if (res.ok) {
-        const newVersion = await res.json()
-        setVersions([newVersion, ...versions])
-        // Also add decrypted version to the decrypted list
-        setDecryptedVersions((prev) => [{
-          ...newVersion,
-          title,
-          content,
-        }, ...prev])
-        toast.success('Version saved')
+      
+      const { data: versionsList, error: verErr } = await supabase
+        .from('note_versions')
+        .select('version')
+        .eq('note_id', selectedNoteId)
+        .order('version', { ascending: false })
+        .limit(1)
+
+      const lastVer = versionsList && versionsList.length > 0 ? versionsList[0].version : 0
+      const nextVer = lastVer + 1
+      const versionId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2)
+
+      const { data: newVer, error } = await supabase
+        .from('note_versions')
+        .insert({
+          id: versionId,
+          note_id: selectedNoteId,
+          title: encryptedTitle,
+          content: encryptedContent,
+          version: nextVer,
+        })
+        .select()
+        .single()
+
+      if (error) {
+        toast.error('Failed to save version')
+        return
       }
+
+      const formatted = {
+        id: newVer.id,
+        title: newVer.title,
+        content: newVer.content,
+        version: newVer.version,
+        createdAt: newVer.created_at,
+      }
+
+      setVersions([formatted, ...versions])
+      setDecryptedVersions((prev) => [{
+        ...formatted,
+        title,
+        content,
+      }, ...prev])
+      toast.success('Version saved')
     } catch { toast.error('Failed to save version') }
   }
 
@@ -251,7 +380,10 @@ export function NoteEditor() {
     toast.success(`Restored version ${decrypted.version}`)
     // Trigger auto-save
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
-    saveTimeoutRef.current = setTimeout(() => { saveContent() }, 500)
+    saveTimeoutRef.current = setTimeout(() => {
+      saveTimeoutRef.current = null
+      saveContent()
+    }, 500)
   }
 
   useEffect(() => {
@@ -329,10 +461,6 @@ export function NoteEditor() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-48">
-                <DropdownMenuItem onClick={handleShare}>
-                  <Share2 className="w-4 h-4 mr-2" />
-                  Share
-                </DropdownMenuItem>
                 <DropdownMenuItem onClick={handleOpenHistory}>
                   <History className="w-4 h-4 mr-2" />
                   Version History
@@ -375,12 +503,18 @@ export function NoteEditor() {
                 {content.length} chars
               </Badge>
             </div>
-            {/* Textarea Editor */}
-            <textarea
-              value={content}
-              onChange={handleContentChange}
-              className="w-full min-h-[60vh] resize-y rounded-xl border border-border/50 bg-card/50 p-6 text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-[#059669]/20 focus:border-[#059669]/40 transition-all placeholder:text-muted-foreground/40 font-[inherit]"
-              placeholder="Start writing your note here...&#10;&#10;Supports plain text. You can use it for notes, ideas, journaling, and more."
+            {/* Notion-Style Markdown Editor */}
+            <NotionEditor
+              content={content}
+              onChange={(val) => {
+                setContent(val)
+                if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
+                saveTimeoutRef.current = setTimeout(() => {
+                  saveTimeoutRef.current = null
+                  saveContent()
+                }, 1500)
+              }}
+              disabled={initialLoad}
             />
           </div>
         )}

@@ -2,8 +2,9 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { motion } from 'framer-motion'
-import { useAppStore } from '@/stores/app-store'
+import { useAppStore, TodoItemData } from '@/stores/app-store'
 import { encryptTodoTitle, decryptTodoTitle } from '@/lib/encrypted-api'
+import { supabase } from '@/lib/supabase'
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationPrevious, PaginationNext, PaginationEllipsis } from '@/components/ui/pagination'
 import { AppSidebar } from '@/components/shared/app-sidebar'
 import { Button } from '@/components/ui/button'
@@ -24,7 +25,7 @@ const stagger = {
 
 const fadeUp = {
   hidden: { opacity: 0, y: 16 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.22, 1, 0.36, 1] } },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] } },
 }
 
 export function TodosList() {
@@ -37,11 +38,13 @@ export function TodosList() {
   const setView = useAppStore((s) => s.setView)
   const logout = useAppStore((s) => s.logout)
   const isEncryptedSession = useAppStore((s) => s.isEncryptedSession)
+  const userTier = useAppStore((s) => s.userTier)
 
   const [isLoading, setIsLoading] = useState(true)
   const [createOpen, setCreateOpen] = useState(false)
   const [newTitle, setNewTitle] = useState('')
   const [newWorkspace, setNewWorkspace] = useState<string>('')
+  const [isCreating, setIsCreating] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [page, setPage] = useState(1)
   const PAGE_SIZE = 12
@@ -54,8 +57,38 @@ export function TodosList() {
     if (!currentUser) return
     setIsLoading(true)
     try {
-      const res = await fetch(`/api/todos?userId=${currentUser.id}`)
-      if (res.ok) setTodoLists(await res.json())
+      const { data, error } = await supabase
+        .from('todo_lists')
+        .select('*, todo_items(*)')
+        .eq('author_id', currentUser.id)
+        .eq('is_archived', false)
+
+      if (error) {
+        toast.error('Failed to load todo lists')
+        return
+      }
+
+      const formatted: TodoItemData[] = (data || []).map((t: any) => ({
+        id: t.id,
+        title: t.title,
+        content: '',
+        workspaceId: t.workspace_id,
+        authorId: t.author_id,
+        isPinned: t.is_pinned,
+        isArchived: t.is_archived,
+        createdAt: t.created_at,
+        updatedAt: t.updated_at,
+        items: (t.todo_items || []).map((i: any) => ({
+          id: i.id,
+          title: i.title,
+          completed: i.completed,
+          order: i.order,
+          todoListId: i.todo_list_id,
+          completedAt: i.completed_at,
+        })).sort((a: any, b: any) => a.order - b.order),
+      }))
+
+      setTodoLists(formatted)
     } catch {
       toast.error('Failed to load todo lists')
     } finally {
@@ -93,30 +126,61 @@ export function TodosList() {
   }, [])
 
   const handleCreate = async () => {
-    if (!currentUser) return
+    if (!currentUser || isCreating) return
+    setIsCreating(true)
+
+    // Enforce Free tier todo lists limit (3 todo lists max)
+    const ownedTodoListsCount = todoLists.filter((t) => t.authorId === currentUser.id && !t.isArchived).length
+    if (userTier === 'free' && ownedTodoListsCount >= 3) {
+      toast.error('Free tier is limited to 3 todo lists. Please upgrade to Premium or Ultra Premium!')
+      return
+    }
+
     const plainTitle = newTitle.trim() || 'Untitled Todo List'
+    const todoListId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2)
     try {
       const encryptedTitle = await encryptTodoTitle(plainTitle)
-      const res = await fetch('/api/todos', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: encryptedTitle, authorId: currentUser.id, workspaceId: newWorkspace || null }),
-      })
-      const data = await res.json()
-      if (res.ok) {
-        addTodoList(data)
-        setCreateOpen(false)
-        setNewTitle('')
-        setNewWorkspace('')
-        selectTodo(data.id)
-        toast.success('Todo list created')
+      const { data, error } = await supabase
+        .from('todo_lists')
+        .insert({
+          id: todoListId,
+          title: encryptedTitle,
+          workspace_id: newWorkspace || null,
+          author_id: currentUser.id,
+        })
+        .select()
+        .single()
+
+      if (error) {
+        toast.error(error.message || 'Failed to create todo list')
+        return
       }
+
+      const formatted: TodoItemData = {
+        id: data.id,
+        title: data.title,
+        content: '',
+        workspaceId: data.workspace_id,
+        authorId: data.author_id,
+        isPinned: data.is_pinned,
+        isArchived: data.is_archived,
+        createdAt: data.created_at,
+        updatedAt: data.updated_at,
+        items: [],
+      }
+
+      addTodoList(formatted)
+      setCreateOpen(false)
+      setNewTitle('')
+      setNewWorkspace('')
+      selectTodo(formatted.id)
+      toast.success('Todo list created')
     } catch {
       toast.error('Failed to create todo list')
+    } finally {
+      setIsCreating(false)
     }
   }
-
-  if (!currentUser) return null
 
   const activeTodos = todoLists
     .filter((t) => !t.isArchived)
@@ -134,6 +198,15 @@ export function TodosList() {
     : activeTodos
 
   const totalPages = Math.ceil(filteredTodos.length / PAGE_SIZE)
+
+  useEffect(() => {
+    if (page > totalPages && totalPages > 0) {
+      setPage(totalPages)
+    }
+  }, [filteredTodos.length, totalPages, page])
+
+  if (!currentUser) return null
+
   const paginatedTodos = filteredTodos.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
   const paginationStart = (page - 1) * PAGE_SIZE + 1
   const paginationEnd = Math.min(page * PAGE_SIZE, filteredTodos.length)
@@ -377,8 +450,9 @@ export function TodosList() {
                 </Select>
               </div>
             )}
-            <Button className="w-full bg-gradient-to-r from-[#d97706] to-[#f59e0b] text-white rounded-lg" onClick={handleCreate}>
-              Create Todo List
+            <Button className="w-full bg-gradient-to-r from-[#d97706] to-[#f59e0b] text-white rounded-lg" onClick={handleCreate} disabled={isCreating}>
+              {isCreating ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+              {isCreating ? 'Creating...' : 'Create List'}
             </Button>
           </div>
         </DialogContent>

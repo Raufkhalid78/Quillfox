@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { useAppStore } from '@/stores/app-store'
+import { supabase } from '@/lib/supabase'
 import { AppSidebar } from '@/components/shared/app-sidebar'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -33,7 +34,7 @@ const stagger = {
 
 const fadeUp = {
   hidden: { opacity: 0, y: 20 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.45, ease: [0.22, 1, 0.36, 1] } },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.45, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] } },
 }
 
 const fadeIn = {
@@ -78,7 +79,7 @@ const plans: Plan[] = [
     iconGradient: 'from-[#059669] to-[#0d9488]',
     iconBg: 'bg-[#059669]/10 dark:bg-[#059669]/20',
     features: [
-      { text: 'Up to 3 devices', included: true },
+      { text: '1 active device', included: true },
       { text: 'Up to 2 collaborators', included: true },
       { text: '10 notes max', included: true },
       { text: '3 todo lists max', included: true },
@@ -95,7 +96,7 @@ const plans: Plan[] = [
     id: 'premium',
     name: 'Premium',
     subtitle: 'For power users & small teams',
-    price: '$11.99',
+    price: '$7',
     priceLabel: '/month',
     badge: 'POPULAR',
     badgeColor: 'bg-[#d97706] text-white',
@@ -103,8 +104,9 @@ const plans: Plan[] = [
     iconGradient: 'from-[#d97706] to-[#f59e0b]',
     iconBg: 'bg-[#d97706]/10 dark:bg-[#d97706]/20',
     features: [
-      { text: 'Up to 15 devices', included: true, highlight: true },
-      { text: 'Up to 20 collaborators', included: true, highlight: true },
+      { text: 'Up to 3 devices', included: true, highlight: true },
+      { text: 'Up to 15 collaborators', included: true, highlight: true },
+      { text: '+$5/mo per 10 extra collaborators', included: true },
       { text: 'Unlimited notes', included: true },
       { text: 'Unlimited todo lists', included: true },
       { text: '10 workspaces', included: true },
@@ -123,7 +125,7 @@ const plans: Plan[] = [
     id: 'ultra',
     name: 'Ultra Premium',
     subtitle: 'For teams & organizations',
-    price: '$29.99',
+    price: '$17',
     priceLabel: '/month',
     badge: 'BEST VALUE',
     badgeColor: 'bg-gradient-to-r from-[#7c3aed] to-[#a855f7] text-white',
@@ -131,8 +133,9 @@ const plans: Plan[] = [
     iconGradient: 'from-[#7c3aed] to-[#a855f7]',
     iconBg: 'bg-[#7c3aed]/10 dark:bg-[#7c3aed]/20',
     features: [
-      { text: 'Up to 50 devices', included: true, highlight: true },
-      { text: 'Up to 70 collaborators', included: true, highlight: true },
+      { text: 'Up to 5 devices', included: true, highlight: true },
+      { text: 'Up to 35 collaborators', included: true, highlight: true },
+      { text: '+$5/mo per 10 extra collaborators', included: true },
       { text: 'Unlimited notes', included: true },
       { text: 'Unlimited todo lists', included: true },
       { text: 'Unlimited workspaces', included: true },
@@ -153,6 +156,8 @@ export function PricingView() {
   const setView = useAppStore((s) => s.setView)
   const logout = useAppStore((s) => s.logout)
   const isEncryptedSession = useAppStore((s) => s.isEncryptedSession)
+  const setTier = useAppStore((s) => s.setTier)
+  const userTier = useAppStore((s) => s.userTier)
   const { theme, setTheme } = useTheme()
 
   const [billingOpen, setBillingOpen] = useState(false)
@@ -165,8 +170,8 @@ export function PricingView() {
   }, [currentUser, setView])
 
   const handleSelectPlan = (plan: Plan) => {
-    if (plan.id === 'free') {
-      toast.success('You are already on the Free plan')
+    if (plan.id === userTier) {
+      toast.success(`You are already on the ${plan.name} plan`)
       return
     }
     setSelectedPlan(plan)
@@ -174,12 +179,37 @@ export function PricingView() {
   }
 
   const handleConfirmUpgrade = async () => {
+    if (!currentUser || !selectedPlan) return
     setIsProcessing(true)
     // Simulate payment processing
     await new Promise((resolve) => setTimeout(resolve, 1500))
-    setIsProcessing(false)
-    setBillingOpen(false)
-    toast.success(`${selectedPlan?.name} plan activated! (Demo)`)
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ tier: selectedPlan.id })
+        .eq('id', currentUser.id)
+
+      if (error) {
+        console.warn("DB update failed, using local simulation:", error.message)
+      }
+      setTier(selectedPlan.id as 'free' | 'premium' | 'ultra')
+      
+      if (selectedPlan.id === 'free') {
+        toast.success('Subscription downgraded to Free plan!')
+      } else {
+        toast.success(`${selectedPlan.name} plan activated!`)
+      }
+    } catch {
+      setTier(selectedPlan.id as 'free' | 'premium' | 'ultra')
+      if (selectedPlan.id === 'free') {
+        toast.success('Subscription downgraded to Free plan! (local simulation)')
+      } else {
+        toast.success(`${selectedPlan.name} plan activated! (local simulation)`)
+      }
+    } finally {
+      setIsProcessing(false)
+      setBillingOpen(false)
+    }
   }
 
   const getAnnualPrice = (price: string) => {
@@ -311,13 +341,46 @@ export function PricingView() {
                       </div>
 
                       {/* CTA Button */}
-                      <Button
-                        className={`w-full rounded-xl h-10 text-sm font-semibold mb-6 ${plan.ctaGradient || ''}`}
-                        variant={plan.ctaVariant}
-                        onClick={() => handleSelectPlan(plan)}
-                      >
-                        {plan.cta}
-                      </Button>
+                      {(() => {
+                        const isActive = userTier === plan.id
+                        let ctaText = 'Upgrade'
+                        let ctaVariant: 'outline' | 'default' = 'default'
+                        let ctaGradient = plan.ctaGradient || ''
+                        let isDisabled = false
+
+                        if (isActive) {
+                          ctaText = 'Current Plan'
+                          ctaVariant = 'outline'
+                          ctaGradient = ''
+                          isDisabled = true
+                        } else {
+                          if (plan.id === 'free') {
+                            ctaText = 'Downgrade to Free'
+                            ctaVariant = 'outline'
+                            ctaGradient = 'hover:bg-accent hover:text-accent-foreground border-border/60'
+                          } else if (plan.id === 'premium') {
+                            ctaText = userTier === 'ultra' ? 'Downgrade to Premium' : 'Upgrade to Premium'
+                            ctaVariant = userTier === 'ultra' ? 'outline' : 'default'
+                            if (userTier === 'ultra') {
+                              ctaGradient = 'border-[#d97706]/50 text-[#d97706] hover:bg-[#d97706]/10'
+                            }
+                          } else if (plan.id === 'ultra') {
+                            ctaText = 'Upgrade to Ultra'
+                            ctaVariant = 'default'
+                          }
+                        }
+
+                        return (
+                          <Button
+                            className={`w-full rounded-xl h-10 text-sm font-semibold mb-6 ${ctaGradient}`}
+                            variant={ctaVariant}
+                            onClick={() => handleSelectPlan(plan)}
+                            disabled={isDisabled}
+                          >
+                            {ctaText}
+                          </Button>
+                        )
+                      })()}
 
                       {/* Features */}
                       <div className="space-y-3 flex-1">
@@ -405,59 +468,72 @@ export function PricingView() {
       {/* Upgrade Confirmation Dialog */}
       <Dialog open={billingOpen} onOpenChange={setBillingOpen}>
         <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Crown className="w-5 h-5 text-[#d97706]" />
-              Upgrade to {selectedPlan?.name}
-            </DialogTitle>
-            <DialogDescription>
-              Confirm your plan upgrade to unlock all premium features.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 mt-4">
-            {/* Plan Summary */}
-            <div className="rounded-xl border border-border/50 p-4 bg-muted/30">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-semibold">{selectedPlan?.name}</span>
-                <span className="text-lg font-bold">
-                  {selectedPlan?.price === '$0' ? selectedPlan.price : annualToggle ? getAnnualPrice(selectedPlan?.price ?? '$0') : selectedPlan?.price}
-                  <span className="text-xs text-muted-foreground font-normal ml-1">
-                    {selectedPlan?.price === '$0' ? '' : annualToggle ? '/year' : '/month'}
-                  </span>
-                </span>
-              </div>
-              <div className="space-y-1.5">
-                {selectedPlan?.features.filter(f => f.included).slice(0, 3).map((f, i) => (
-                  <div key={i} className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <Check className="w-3 h-3 text-[#059669]" />
-                    <span>{f.text}</span>
+          {(() => {
+            const isUpgrade = selectedPlan ? (
+              (userTier === 'free') || 
+              (userTier === 'premium' && selectedPlan.id === 'ultra')
+            ) : true
+
+            return (
+              <>
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2">
+                    <Crown className="w-5 h-5 text-[#d97706]" />
+                    {isUpgrade ? `Upgrade to ${selectedPlan?.name}` : `Downgrade to ${selectedPlan?.name}`}
+                  </DialogTitle>
+                  <DialogDescription>
+                    {isUpgrade 
+                      ? 'Confirm your plan upgrade to unlock all premium features.'
+                      : 'Confirm your plan downgrade. Some premium features may become locked.'}
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 mt-4">
+                  {/* Plan Summary */}
+                  <div className="rounded-xl border border-border/50 p-4 bg-muted/30">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-semibold">{selectedPlan?.name}</span>
+                      <span className="text-lg font-bold">
+                        {selectedPlan?.price === '$0' ? selectedPlan.price : annualToggle ? getAnnualPrice(selectedPlan?.price ?? '$0') : selectedPlan?.price}
+                        <span className="text-xs text-muted-foreground font-normal ml-1">
+                          {selectedPlan?.price === '$0' ? '' : annualToggle ? '/year' : '/month'}
+                        </span>
+                      </span>
+                    </div>
+                    <div className="space-y-1.5">
+                      {selectedPlan?.features.filter(f => f.included).slice(0, 3).map((f, i) => (
+                        <div key={i} className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <Check className="w-3 h-3 text-[#059669]" />
+                          <span>{f.text}</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                ))}
-              </div>
-            </div>
 
-            {/* Payment Info */}
-            <div className="rounded-xl border border-border/50 p-4 bg-muted/30">
-              <p className="text-[11px] text-muted-foreground leading-relaxed">
-                This is a demo environment. No actual payment will be processed. In production, you would be redirected to a secure payment gateway.
-              </p>
-            </div>
+                  {/* Payment Info */}
+                  <div className="rounded-xl border border-border/50 p-4 bg-muted/30">
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">
+                      This is a demo environment. No actual payment will be processed. In production, you would be redirected to a secure payment gateway.
+                    </p>
+                  </div>
 
-            <Button
-              className={`w-full rounded-xl h-10 font-semibold ${selectedPlan?.ctaGradient}`}
-              onClick={handleConfirmUpgrade}
-              disabled={isProcessing}
-            >
-              {isProcessing ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Processing...
-                </>
-              ) : (
-                `Confirm Upgrade`
-              )}
-            </Button>
-          </div>
+                  <Button
+                    className={`w-full rounded-xl h-10 font-semibold ${selectedPlan?.ctaGradient}`}
+                    onClick={handleConfirmUpgrade}
+                    disabled={isProcessing}
+                  >
+                    {isProcessing ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Processing...
+                      </>
+                    ) : (
+                      isUpgrade ? 'Confirm Upgrade' : 'Confirm Downgrade'
+                    )}
+                  </Button>
+                </div>
+              </>
+            )
+          })()}
         </DialogContent>
       </Dialog>
     </div>

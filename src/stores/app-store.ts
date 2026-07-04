@@ -1,13 +1,15 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { supabase } from '@/lib/supabase'
 
-export type AppView = 'auth' | 'dashboard' | 'note-editor' | 'todo-list' | 'notes' | 'todos' | 'workspaces' | 'settings' | 'pricing' | 'archive'
+export type AppView = 'landing' | 'auth' | 'dashboard' | 'note-editor' | 'todo-list' | 'notes' | 'todos' | 'workspaces' | 'settings' | 'pricing' | 'archive'
 
 export interface User {
   id: string
   email: string
   name: string | null
   image?: string | null
+  createdAt?: string
 }
 
 export interface Collaborator {
@@ -47,6 +49,7 @@ export interface TodoItemChild {
   completed: boolean
   order: number
   todoListId: string
+  completedAt?: string | null
 }
 
 export interface WorkspaceData {
@@ -61,6 +64,7 @@ export interface WorkspaceData {
   _count: {
     notes: number
     todoLists: number
+    members: number
   }
 }
 
@@ -86,6 +90,14 @@ interface AppState {
   encryptionSalt: string | null
   isEncryptedSession: boolean
 
+  // Pro Tier and Auto-Lock Security State
+  userTier: 'free' | 'premium' | 'ultra'
+  isVaultLocked: boolean
+  vaultAutoLock: boolean
+  vaultLockTimeout: number
+  vaultPasscodeHash: string | null
+  extraCollaborators: number
+
   // Actions
   setView: (view: AppView) => void
   login: (user: User) => void
@@ -110,13 +122,19 @@ interface AppState {
   updateTodoListItems: (todoListId: string, items: TodoItemChild[]) => void
   addTodoItem: (todoListId: string, item: TodoItemChild) => void
   updateUserName: (name: string) => void
+  updateUserImage: (image: string | null) => void
+  setTier: (tier: 'free' | 'premium' | 'ultra') => void
+  lockVault: () => void
+  unlockVault: () => void
+  updateVaultSettings: (settings: { vaultAutoLock?: boolean; vaultLockTimeout?: number; vaultPasscodeHash?: string | null }) => void
+  setExtraCollaborators: (count: number) => void
 }
 
 export const useAppStore = create<AppState>()(
   persist(
     (set) => ({
       // Initial state
-      currentView: 'auth',
+      currentView: 'landing',
       currentUser: null,
       selectedNoteId: null,
       selectedTodoListId: null,
@@ -132,16 +150,25 @@ export const useAppStore = create<AppState>()(
       encryptionSalt: null,
       isEncryptedSession: false,
 
+      // Pro Tier and Auto-Lock initial state
+      userTier: 'free',
+      isVaultLocked: false,
+      vaultAutoLock: false,
+      vaultLockTimeout: 15,
+      vaultPasscodeHash: null,
+      extraCollaborators: 0,
+
       // Actions
       setView: (view) => set({ currentView: view }),
 
       login: (user) =>
         set({ currentUser: user, currentView: 'dashboard' }),
 
-      logout: () =>
+      logout: () => {
+        supabase.auth.signOut().catch(console.error)
         set({
           currentUser: null,
-          currentView: 'auth',
+          currentView: 'landing',
           selectedNoteId: null,
           selectedTodoListId: null,
           selectedWorkspaceId: null,
@@ -154,7 +181,9 @@ export const useAppStore = create<AppState>()(
           encryptionKey: null,
           encryptionSalt: null,
           isEncryptedSession: false,
-        }),
+          isVaultLocked: false,
+        })
+      },
 
       setEncryptionKey: (key, salt) =>
         set({ encryptionKey: key, encryptionSalt: salt, isEncryptedSession: true }),
@@ -246,13 +275,30 @@ export const useAppStore = create<AppState>()(
             ? { ...state.currentUser, name }
             : null,
         })),
+      updateUserImage: (image) =>
+        set((state) => ({
+          currentUser: state.currentUser
+            ? { ...state.currentUser, image }
+            : null,
+        })),
+
+      setTier: (tier) => set({ userTier: tier }),
+      lockVault: () => set({ isVaultLocked: true }),
+      unlockVault: () => set({ isVaultLocked: false }),
+      updateVaultSettings: (settings) => set((state) => ({ ...state, ...settings })),
+      setExtraCollaborators: (count) => set({ extraCollaborators: count }),
     }),
     {
       name: 'quillfox-app-storage',
       partialize: (state) => ({
         currentUser: state.currentUser,
-        currentView: state.currentView === 'auth' ? 'auth' : state.currentView,
+        currentView: state.currentView === 'landing' || state.currentView === 'auth' ? state.currentView : state.currentView,
         encryptionSalt: state.encryptionSalt,
+        userTier: state.userTier,
+        extraCollaborators: state.extraCollaborators,
+        vaultAutoLock: state.vaultAutoLock,
+        vaultLockTimeout: state.vaultLockTimeout,
+        vaultPasscodeHash: state.vaultPasscodeHash,
       }),
     }
   )

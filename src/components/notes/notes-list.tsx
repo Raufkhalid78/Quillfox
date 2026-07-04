@@ -4,6 +4,8 @@ import { useEffect, useState, useRef, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import { useAppStore } from '@/stores/app-store'
 import { encryptNoteTitle, decryptNoteTitle, decryptNoteContent } from '@/lib/encrypted-api'
+import { supabase } from '@/lib/supabase'
+import { logActivity } from '@/lib/activity'
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationPrevious, PaginationNext, PaginationEllipsis } from '@/components/ui/pagination'
 import { AppSidebar } from '@/components/shared/app-sidebar'
 import { Button } from '@/components/ui/button'
@@ -13,7 +15,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { toast } from 'sonner'
-import { Plus, FileText, Clock, ShieldCheck, PenLine, LogOut, Sun, Moon, StickyNote, Search } from 'lucide-react'
+import { Plus, FileText, Clock, ShieldCheck, PenLine, LogOut, Sun, Moon, StickyNote, Search, Loader2 } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { formatDistanceToNow } from 'date-fns'
 
@@ -24,7 +26,7 @@ const stagger = {
 
 const fadeUp = {
   hidden: { opacity: 0, y: 16 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.22, 1, 0.36, 1] } },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] } },
 }
 
 export function NotesList() {
@@ -37,25 +39,50 @@ export function NotesList() {
   const setView = useAppStore((s) => s.setView)
   const logout = useAppStore((s) => s.logout)
   const isEncryptedSession = useAppStore((s) => s.isEncryptedSession)
+  const userTier = useAppStore((s) => s.userTier)
 
   const [isLoading, setIsLoading] = useState(true)
   const [createOpen, setCreateOpen] = useState(false)
   const [newTitle, setNewTitle] = useState('')
   const [newWorkspace, setNewWorkspace] = useState<string>('')
+  const [isCreating, setIsCreating] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [page, setPage] = useState(1)
   const PAGE_SIZE = 12
   const { theme, setTheme } = useTheme()
   const contentRef = useRef<HTMLDivElement>(null)
 
-  const [decryptedNotes, setDecryptedNotes] = useState<Map<string, { title: string; preview: string }>>(new Map())
+  const [decryptedNotes, setDecryptedNotes] = useState<Map<string, { title: string; preview: string; updatedAt: string }>>(new Map())
+  const decryptedNotesRef = useRef<Map<string, { title: string; preview: string; updatedAt: string }>>(new Map())
 
   const fetchData = async () => {
     if (!currentUser) return
     setIsLoading(true)
     try {
-      const res = await fetch(`/api/notes?userId=${currentUser.id}`)
-      if (res.ok) setNotes(await res.json())
+      const { data, error } = await supabase
+        .from('notes')
+        .select('*')
+        .eq('author_id', currentUser.id)
+        .eq('is_archived', false)
+
+      if (error) {
+        toast.error('Failed to load notes')
+        return
+      }
+
+      const formatted = data.map((n: any) => ({
+        id: n.id,
+        title: n.title,
+        content: n.content,
+        workspaceId: n.workspace_id,
+        authorId: n.author_id,
+        isPinned: n.is_pinned,
+        isArchived: n.is_archived,
+        createdAt: n.created_at,
+        updatedAt: n.updated_at,
+      }))
+
+      setNotes(formatted)
     } catch {
       toast.error('Failed to load notes')
     } finally {
@@ -67,15 +94,27 @@ export function NotesList() {
 
   useEffect(() => {
     const decryptData = async () => {
-      const noteMap = new Map<string, { title: string; preview: string }>()
+      const currentMap = decryptedNotesRef.current
+      const noteMap = new Map(currentMap)
+      let changed = false
+
       await Promise.all(
         notes.map(async (n) => {
+          const existing = noteMap.get(n.id)
+          if (existing && existing.updatedAt === n.updatedAt) return
+
           const title = await decryptNoteTitle(n.title)
-          const preview = await decryptNoteContent(n.content.substring(0, 120))
-          noteMap.set(n.id, { title, preview: preview || 'Empty note...' })
+          const decryptedContent = await decryptNoteContent(n.content)
+          const preview = decryptedContent.substring(0, 120)
+          noteMap.set(n.id, { title, preview: preview || 'Empty note...', updatedAt: n.updatedAt })
+          changed = true
         })
       )
-      setDecryptedNotes(noteMap)
+
+      if (changed) {
+        decryptedNotesRef.current = noteMap
+        setDecryptedNotes(noteMap)
+      }
     }
     if (!isLoading) decryptData()
   }, [notes, isLoading])
@@ -94,30 +133,62 @@ export function NotesList() {
   }, [])
 
   const handleCreate = async () => {
-    if (!currentUser) return
+    if (!currentUser || isCreating) return
+    setIsCreating(true)
+
+    // Enforce Free tier notes limit (10 notes max)
+    const ownedNotesCount = notes.filter((n) => n.authorId === currentUser.id && !n.isArchived).length
+    if (userTier === 'free' && ownedNotesCount >= 10) {
+      toast.error('Free tier is limited to 10 notes. Please upgrade to Premium or Ultra Premium!')
+      return
+    }
+
     const plainTitle = newTitle.trim() || 'Untitled Note'
+    const noteId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2)
     try {
       const encryptedTitle = await encryptNoteTitle(plainTitle)
-      const res = await fetch('/api/notes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: encryptedTitle, authorId: currentUser.id, workspaceId: newWorkspace || null }),
-      })
-      const data = await res.json()
-      if (res.ok) {
-        addNote(data)
-        setCreateOpen(false)
-        setNewTitle('')
-        setNewWorkspace('')
-        selectNote(data.id)
-        toast.success('Note created')
+      const { data: note, error } = await supabase
+        .from('notes')
+        .insert({
+          id: noteId,
+          title: encryptedTitle,
+          content: '',
+          workspace_id: newWorkspace || null,
+          author_id: currentUser.id,
+        })
+        .select()
+        .single()
+
+      if (error) {
+        toast.error(error.message || 'Failed to create note')
+        return
       }
+
+      const formatted = {
+        id: note.id,
+        title: note.title,
+        content: note.content,
+        workspaceId: note.workspace_id,
+        authorId: note.author_id,
+        isPinned: note.is_pinned,
+        isArchived: note.is_archived,
+        createdAt: note.created_at,
+        updatedAt: note.updated_at,
+      }
+
+      addNote(formatted)
+      logActivity('note_create')
+      setCreateOpen(false)
+      setNewTitle('')
+      setNewWorkspace('')
+      selectNote(formatted.id)
+      toast.success('Note created')
     } catch {
       toast.error('Failed to create note')
+    } finally {
+      setIsCreating(false)
     }
   }
-
-  if (!currentUser) return null
 
   const activeNotes = notes
     .filter((n) => !n.isArchived)
@@ -135,6 +206,15 @@ export function NotesList() {
     : activeNotes
 
   const totalPages = Math.ceil(filteredNotes.length / PAGE_SIZE)
+
+  useEffect(() => {
+    if (page > totalPages && totalPages > 0) {
+      setPage(totalPages)
+    }
+  }, [filteredNotes.length, totalPages, page])
+
+  if (!currentUser) return null
+
   const paginatedNotes = filteredNotes.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
   const paginationStart = (page - 1) * PAGE_SIZE + 1
   const paginationEnd = Math.min(page * PAGE_SIZE, filteredNotes.length)
@@ -365,8 +445,9 @@ export function NotesList() {
                 </Select>
               </div>
             )}
-            <Button className="w-full bg-gradient-to-r from-[#059669] to-[#0d9488] text-white rounded-lg" onClick={handleCreate}>
-              Create Note
+            <Button className="w-full bg-gradient-to-r from-[#059669] to-[#0d9488] text-white rounded-lg" onClick={handleCreate} disabled={isCreating}>
+              {isCreating ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+              {isCreating ? 'Creating...' : 'Create Note'}
             </Button>
           </div>
         </DialogContent>

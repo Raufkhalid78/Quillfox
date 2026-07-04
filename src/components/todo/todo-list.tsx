@@ -2,9 +2,10 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useAppStore } from '@/stores/app-store'
+import { useAppStore, TodoItemChild } from '@/stores/app-store'
 import { encryptTodoTitle, decryptTodoTitle } from '@/lib/encrypted-api'
-import { useCollabSocket } from '@/hooks/use-collab-socket'
+import { logActivity } from '@/lib/activity'
+import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -29,80 +30,60 @@ export function TodoList() {
   const todoLists = useAppStore((s) => s.todoLists)
   const updateTodoListItems = useAppStore((s) => s.updateTodoListItems)
   const updateTodoListTitle = useAppStore((s) => s.updateTodoListTitle)
-  const setActiveCollaborators = useAppStore((s) => s.setActiveCollaborators)
-  const setLock = useAppStore((s) => s.setLock)
   const setView = useAppStore((s) => s.setView)
   const isEncryptedSession = useAppStore((s) => s.isEncryptedSession)
+  const addTodoItem = useAppStore((s) => s.addTodoItem)
 
   const [title, setTitle] = useState('')
-  const [items, setItems] = useState<Array<{
-    id: string
-    title: string
-    completed: boolean
-    order: number
-    todoListId: string
-  }>>([])
+  const [items, setItems] = useState<TodoItemChild[]>([])
   const [newItemText, setNewItemText] = useState('')
   const [isSaving, setIsSaving] = useState(false)
   const [initialLoad, setInitialLoad] = useState(true)
   const [draggedId, setDraggedId] = useState<string | null>(null)
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const lastLocalSaveTimeRef = useRef<number>(0)
   const itemsRef = useRef(items)
-  itemsRef.current = items
+  useEffect(() => {
+    itemsRef.current = items
+  }, [items])
 
   const todoList = todoLists.find((t) => t.id === selectedTodoListId)
 
-  // Wire collab socket hook
-  const collab = useCollabSocket({
-    documentType: 'todolist',
-    documentId: selectedTodoListId || '',
-    userId: currentUser?.id || '',
-    userName: currentUser?.name || currentUser?.email || '',
-    avatar: currentUser?.image,
-    onItemCompleted: (itemId, completed) => {
-      setItems((prev) => prev.map((item) =>
-        item.id === itemId ? { ...item, completed } : item
-      ))
-      toast.info(`Item ${completed ? 'completed' : 'unchecked'} by collaborator`)
-    },
-  })
+  const isLocked = false
+  const lockedByUser = null
 
-  // Sync collab state to store
-  useEffect(() => {
-    setActiveCollaborators(collab.activeUsers.map(u => ({ userId: u.userId, userName: u.userName, avatar: u.avatar })))
-  }, [collab.activeUsers, setActiveCollaborators])
-
-  useEffect(() => {
-    setLock(collab.lockStatus.isLocked, collab.lockStatus.lockedByUser)
-  }, [collab.lockStatus.isLocked, collab.lockStatus.lockedByUser, setLock])
-
-  const isLocked = useAppStore((s) => s.isLocked)
-  const lockedByUser = useAppStore((s) => s.lockedByUser)
-
-  // Load todo list data & decrypt
+  // Load todo list data & decrypt + subscribe to realtime updates
   useEffect(() => {
     if (!selectedTodoListId) return
     const loadTodoList = async () => {
       try {
-        const res = await fetch(`/api/todos/${selectedTodoListId}`)
-        if (res.ok) {
-          const data = await res.json()
-          // Decrypt title and item titles
-          const decryptedTitle = await decryptTodoTitle(data.title)
-          const decryptedItems = await Promise.all(
-            data.items
-              .sort((a: any, b: any) => a.order - b.order)
-              .map(async (item: any) => ({
-                ...item,
-                title: await decryptTodoTitle(item.title),
-              }))
-          )
-          setTitle(decryptedTitle)
-          setItems(decryptedItems)
-        } else {
+        const { data: listData, error: listError } = await supabase
+          .from('todo_lists')
+          .select('*, todo_items(*)')
+          .eq('id', selectedTodoListId)
+          .single()
+
+        if (listError || !listData) {
           toast.error('Failed to load todo list')
           setView('todos')
+          return
         }
+
+        const decryptedTitle = await decryptTodoTitle(listData.title)
+        const decryptedItems = await Promise.all(
+          (listData.todo_items || [])
+            .sort((a: any, b: any) => a.order - b.order)
+            .map(async (item: any) => ({
+              id: item.id,
+              title: await decryptTodoTitle(item.title),
+              completed: item.completed,
+              order: item.order,
+              todoListId: item.todo_list_id,
+              completedAt: item.completed_at,
+            }))
+        )
+        setTitle(decryptedTitle)
+        setItems(decryptedItems)
       } catch {
         toast.error('Network error')
         setView('todos')
@@ -110,6 +91,29 @@ export function TodoList() {
       setInitialLoad(false)
     }
     loadTodoList()
+
+    // Subscribe to realtime database changes for this list
+    const channel = supabase
+      .channel(`todo-list-${selectedTodoListId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'todo_items',
+          filter: `todo_list_id=eq.${selectedTodoListId}`,
+        },
+        () => {
+          if (!saveTimeoutRef.current && Date.now() - lastLocalSaveTimeRef.current > 2000) {
+            loadTodoList()
+          }
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
   }, [selectedTodoListId, setView])
 
   // Calculate progress
@@ -122,6 +126,23 @@ export function TodoList() {
     if (!selectedTodoListId) return
     setIsSaving(true)
     try {
+      // Fetch current IDs in database to find deleted items
+      const { data: dbItems } = await supabase
+        .from('todo_items')
+        .select('id')
+        .eq('todo_list_id', selectedTodoListId)
+      
+      const dbIds = (dbItems || []).map(i => i.id)
+      const saveIds = itemsToSave.map(i => i.id)
+      const idsToDelete = dbIds.filter(id => !saveIds.includes(id))
+
+      if (idsToDelete.length > 0) {
+        await supabase
+          .from('todo_items')
+          .delete()
+          .in('id', idsToDelete)
+      }
+
       // Encrypt all item titles before saving
       const encryptedItems = await Promise.all(
         itemsToSave.map(async (item) => ({
@@ -129,16 +150,29 @@ export function TodoList() {
           title: await encryptTodoTitle(item.title),
         }))
       )
-      const res = await fetch(`/api/todos/${selectedTodoListId}/items`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: encryptedItems }),
-      })
-      if (res.ok) {
-        updateTodoListItems(selectedTodoListId, encryptedItems)
-      } else {
-        toast.error('Failed to save')
+
+      if (encryptedItems.length > 0) {
+        const { error } = await supabase
+          .from('todo_items')
+          .upsert(
+            encryptedItems.map((item) => ({
+              id: item.id,
+              title: item.title,
+              completed: item.completed,
+              order: item.order,
+              todo_list_id: selectedTodoListId,
+              completed_at: item.completed ? (item.completedAt || new Date().toISOString()) : null,
+            }))
+          )
+
+        if (error) {
+          toast.error('Failed to save items')
+          return
+        }
       }
+
+      lastLocalSaveTimeRef.current = Date.now()
+      updateTodoListItems(selectedTodoListId, encryptedItems)
     } catch {
       toast.error('Network error')
     } finally {
@@ -150,10 +184,24 @@ export function TodoList() {
   const handleToggle = useCallback(
     async (itemId: string) => {
       if (isLocked) return
+      const targetItem = itemsRef.current.find(item => item.id === itemId)
+      const isNowCompleted = targetItem ? !targetItem.completed : false
+
       const newItems = itemsRef.current.map((item) =>
-        item.id === itemId ? { ...item, completed: !item.completed } : item
+        item.id === itemId
+          ? {
+              ...item,
+              completed: !item.completed,
+              completedAt: !item.completed ? new Date().toISOString() : null,
+            }
+          : item
       )
       setItems(newItems)
+
+      if (isNowCompleted) {
+        logActivity('todo_complete')
+      }
+
       // Debounce save
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
       saveTimeoutRef.current = setTimeout(async () => {
@@ -166,23 +214,49 @@ export function TodoList() {
   // Add new item
   const handleAddItem = async () => {
     if (!newItemText.trim() || isLocked || !selectedTodoListId) return
+    const itemId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2)
     try {
       // Encrypt title before sending
       const encryptedTitle = await encryptTodoTitle(newItemText.trim())
-      const res = await fetch(`/api/todos/${selectedTodoListId}/items`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const { data: newItem, error } = await supabase
+        .from('todo_items')
+        .insert({
+          id: itemId,
           title: encryptedTitle,
+          completed: false,
           order: items.length,
-        }),
-      })
-      if (res.ok) {
-        const newItem = await res.json()
-        // Store plaintext version locally, but keep encrypted for cache sync
-        setItems((prev) => [...prev, { ...newItem, title: newItemText.trim() }])
-        setNewItemText('')
+          todo_list_id: selectedTodoListId,
+        })
+        .select()
+        .single()
+
+      if (error) {
+        toast.error(error.message || 'Failed to add item')
+        return
       }
+
+      lastLocalSaveTimeRef.current = Date.now()
+
+      const formattedItem = {
+        id: newItem.id,
+        title: newItemText.trim(),
+        completed: newItem.completed,
+        order: newItem.order,
+        todoListId: newItem.todo_list_id,
+      }
+
+      setItems((prev) => [...prev, formattedItem])
+      
+      const encryptedItemForStore = {
+        id: newItem.id,
+        title: encryptedTitle,
+        completed: newItem.completed,
+        order: newItem.order,
+        todoListId: newItem.todo_list_id,
+      }
+      addTodoItem(selectedTodoListId, encryptedItemForStore)
+      
+      setNewItemText('')
     } catch {
       toast.error('Failed to add item')
     }
@@ -244,11 +318,15 @@ export function TodoList() {
         if (!selectedTodoListId) return
         try {
           const encryptedTitle = await encryptTodoTitle(newTitle)
-          await fetch(`/api/todos/${selectedTodoListId}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ title: encryptedTitle }),
-          })
+          const { error } = await supabase
+            .from('todo_lists')
+            .update({ title: encryptedTitle })
+            .eq('id', selectedTodoListId)
+
+          if (error) {
+            toast.error('Failed to save title')
+            return
+          }
           updateTodoListTitle(selectedTodoListId, encryptedTitle)
         } catch {
           toast.error('Failed to save title')
@@ -265,15 +343,19 @@ export function TodoList() {
   const handleDelete = async () => {
     if (!selectedTodoListId) return
     try {
-      const res = await fetch(`/api/todos/${selectedTodoListId}`, {
-        method: 'DELETE',
-      })
-      if (res.ok) {
-        removeTodoList(selectedTodoListId)
-        toast.success('Todo list deleted')
-        setDeleteConfirmOpen(false)
-        setView('todos')
+      const { error } = await supabase
+        .from('todo_lists')
+        .delete()
+        .eq('id', selectedTodoListId)
+
+      if (error) {
+        toast.error('Failed to delete')
+        return
       }
+      removeTodoList(selectedTodoListId)
+      toast.success('Todo list deleted')
+      setDeleteConfirmOpen(false)
+      setView('todos')
     } catch {
       toast.error('Failed to delete')
     }
@@ -286,16 +368,18 @@ export function TodoList() {
     if (!selectedTodoListId || !todoList) return
     const newPinned = !todoList.isPinned
     try {
-      const res = await fetch(`/api/todos/${selectedTodoListId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ isPinned: newPinned }),
-      })
-      if (res.ok) {
-        const updated = todoLists.map((t) => t.id === selectedTodoListId ? { ...t, isPinned: newPinned } : t)
-        setTodoListsAction(updated)
-        toast.success(newPinned ? 'List pinned' : 'List unpinned')
+      const { error } = await supabase
+        .from('todo_lists')
+        .update({ is_pinned: newPinned })
+        .eq('id', selectedTodoListId)
+
+      if (error) {
+        toast.error('Failed to update')
+        return
       }
+      const updated = todoLists.map((t) => t.id === selectedTodoListId ? { ...t, isPinned: newPinned } : t)
+      setTodoListsAction(updated)
+      toast.success(newPinned ? 'List pinned' : 'List unpinned')
     } catch { toast.error('Failed to update') }
   }
 
@@ -303,22 +387,24 @@ export function TodoList() {
     if (!selectedTodoListId || !todoList) return
     const newArchived = !todoList.isArchived
     try {
-      const res = await fetch(`/api/todos/${selectedTodoListId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ isArchived: newArchived }),
-      })
-      if (res.ok) {
-        if (newArchived) {
-          const updated = todoLists.filter((t) => t.id !== selectedTodoListId)
-          setTodoListsAction(updated)
-          setView('todos')
-        } else {
-          const updated = todoLists.map((t) => t.id === selectedTodoListId ? { ...t, isArchived: false } : t)
-          setTodoListsAction(updated)
-        }
-        toast.success(newArchived ? 'List archived' : 'List restored')
+      const { error } = await supabase
+        .from('todo_lists')
+        .update({ is_archived: newArchived })
+        .eq('id', selectedTodoListId)
+
+      if (error) {
+        toast.error('Failed to update')
+        return
       }
+      if (newArchived) {
+        const updated = todoLists.filter((t) => t.id !== selectedTodoListId)
+        setTodoListsAction(updated)
+        setView('todos')
+      } else {
+        const updated = todoLists.map((t) => t.id === selectedTodoListId ? { ...t, isArchived: false } : t)
+        setTodoListsAction(updated)
+      }
+      toast.success(newArchived ? 'List archived' : 'List restored')
     } catch { toast.error('Failed to update') }
   }
 
@@ -396,18 +482,7 @@ export function TodoList() {
               </motion.div>
             )}
 
-            {/* Collaboration indicator */}
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Badge variant="outline" className={`gap-1 text-[10px] sm:text-xs px-1.5 sm:px-2 ${collab.isConnected ? 'text-[#a855f7] border-purple-300 bg-purple-50 dark:bg-purple-950/30 dark:border-purple-800' : 'text-muted-foreground'}`}>
-                    <div className={`w-1.5 h-1.5 rounded-full ${collab.isConnected ? 'bg-emerald-500 animate-pulse' : 'bg-muted-foreground'}`} />
-                    <span className="hidden sm:inline">{collab.isConnected ? 'Live' : 'Offline'}</span>
-                  </Badge>
-                </TooltipTrigger>
-                <TooltipContent>{collab.isConnected ? 'Real-time collaboration active' : 'Collaboration disconnected'}</TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+            {/* Collaboration indicator - removed since Socket.io server is removed */}
 
             {/* Actions dropdown */}
             <DropdownMenu>

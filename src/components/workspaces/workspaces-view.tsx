@@ -3,7 +3,9 @@
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { useAppStore, type WorkspaceData } from '@/stores/app-store'
-import { encryptNoteTitle, encryptTodoTitle } from '@/lib/encrypted-api'
+import { encryptWorkspaceTitle, decryptWorkspaceTitle, encryptWorkspaceDescription, decryptWorkspaceDescription, encryptNoteTitle, encryptTodoTitle } from '@/lib/encrypted-api'
+import { supabase } from '@/lib/supabase'
+import { logActivity } from '@/lib/activity'
 import { AppSidebar } from '@/components/shared/app-sidebar'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -38,7 +40,7 @@ const stagger = {
 
 const fadeUp = {
   hidden: { opacity: 0, y: 16 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] } },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] } },
 }
 
 const workspaceColors = [
@@ -65,12 +67,14 @@ export function WorkspacesView() {
   const setView = useAppStore((s) => s.setView)
   const logout = useAppStore((s) => s.logout)
   const isEncryptedSession = useAppStore((s) => s.isEncryptedSession)
+  const userTier = useAppStore((s) => s.userTier)
 
   const [isLoading, setIsLoading] = useState(true)
   const [createOpen, setCreateOpen] = useState(false)
   const [newTitle, setNewTitle] = useState('')
   const [newDescription, setNewDescription] = useState('')
   const [newColor, setNewColor] = useState('#059669')
+  const [isCreating, setIsCreating] = useState(false)
 
   const [selectedWs, setSelectedWs] = useState<WorkspaceData | null>(null)
   const [wsDetailOpen, setWsDetailOpen] = useState(false)
@@ -86,6 +90,7 @@ export function WorkspacesView() {
   const [editDescription, setEditDescription] = useState('')
   const [editColor, setEditColor] = useState('')
   const [isSaving, setIsSaving] = useState(false)
+  const [memberToRemove, setMemberToRemove] = useState<{ id: string, name: string } | null>(null)
 
   const { theme, setTheme } = useTheme()
 
@@ -93,8 +98,56 @@ export function WorkspacesView() {
     if (!currentUser) return
     setIsLoading(true)
     try {
-      const res = await fetch(`/api/workspaces?userId=${currentUser.id}`)
-      if (res.ok) setWorkspacesAction(await res.json())
+      // Fetch workspaces where owner_id = currentUser.id
+      const { data: owned, error: ownedErr } = await supabase
+        .from('workspaces')
+        .select('*, workspace_members(user_id), notes(id, is_archived), todo_lists(id, is_archived)')
+        .eq('owner_id', currentUser.id)
+
+      // Fetch workspaces where user is a member
+      const { data: memberOf, error: memberErr } = await supabase
+        .from('workspace_members')
+        .select('workspace_id, workspaces(*, workspace_members(user_id), notes(id, is_archived), todo_lists(id, is_archived))')
+        .eq('user_id', currentUser.id)
+        .not('workspaces.owner_id', 'eq', currentUser.id)
+
+      if (ownedErr || memberErr) {
+        toast.error('Failed to load workspaces')
+        return
+      }
+
+      const memberWorkspaces = (memberOf || [])
+        .map((m: any) => m.workspaces)
+        .filter(Boolean)
+
+      const all = [...(owned || []), ...memberWorkspaces]
+
+      // Format data to match WorkspaceData type
+      const formatted = await Promise.all(all.map(async (ws: any) => {
+        const activeNotes = (ws.notes || []).filter((n: any) => !n.is_archived)
+        const activeTodos = (ws.todo_lists || []).filter((t: any) => !t.is_archived)
+        
+        return {
+          id: ws.id,
+          title: await decryptWorkspaceTitle(ws.title),
+          description: await decryptWorkspaceDescription(ws.description),
+          color: ws.color,
+          icon: ws.icon,
+          ownerId: ws.owner_id,
+          createdAt: ws.created_at,
+          updatedAt: ws.updated_at,
+          _count: {
+            notes: activeNotes.length,
+            todoLists: activeTodos.length,
+            members: (ws.workspace_members || []).length || 1,
+          },
+        }
+      }))
+
+      // Sort by updatedAt desc
+      formatted.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+
+      setWorkspacesAction(formatted)
     } catch {
       toast.error('Failed to load workspaces')
     } finally {
@@ -109,25 +162,81 @@ export function WorkspacesView() {
   }, [currentUser, setView])
 
   const handleCreate = async () => {
-    if (!currentUser) return
+    if (!currentUser || isCreating) return
+    setIsCreating(true)
+
+    // Enforce workspace creation limit based on subscription tier
+    const ownedWorkspacesCount = workspaces.filter((w) => w.ownerId === currentUser.id).length
+    if (userTier === 'free' && ownedWorkspacesCount >= 1) {
+      toast.error('Free tier is limited to 1 workspace. Please upgrade to Premium or Ultra Premium!')
+      return
+    }
+    if (userTier === 'premium' && ownedWorkspacesCount >= 10) {
+      toast.error('Premium tier is limited to 10 workspaces. Please upgrade to Ultra Premium!')
+      return
+    }
+
     const title = newTitle.trim() || 'Untitled Workspace'
+    const wsId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2)
     try {
-      const res = await fetch('/api/workspaces', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, description: newDescription.trim() || null, color: newColor, ownerId: currentUser.id }),
-      })
-      const data = await res.json()
-      if (res.ok) {
-        setWorkspacesAction([...workspaces, data])
-        setCreateOpen(false)
-        setNewTitle('')
-        setNewDescription('')
-        setNewColor('#059669')
-        toast.success('Workspace created')
+      const encryptedTitle = await encryptWorkspaceTitle(title)
+      const encryptedDesc = await encryptWorkspaceDescription(newDescription.trim() || null)
+
+      // 1. Insert workspace
+      const { data: ws, error } = await supabase
+        .from('workspaces')
+        .insert({
+          id: wsId,
+          title: encryptedTitle,
+          description: encryptedDesc,
+          color: newColor,
+          owner_id: currentUser.id,
+        })
+        .select()
+        .single()
+
+      if (error) {
+        toast.error(error.message || 'Failed to create workspace')
+        return
       }
+
+      // 2. Insert owner as workspace member
+      const memberId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2)
+      await supabase
+        .from('workspace_members')
+        .insert({
+          id: memberId,
+          user_id: currentUser.id,
+          workspace_id: wsId,
+          role: 'owner',
+        })
+
+      const newWs: WorkspaceData = {
+        id: ws.id,
+        title,
+        description: newDescription.trim() || null,
+        color: ws.color,
+        icon: ws.icon,
+        ownerId: ws.owner_id,
+        createdAt: ws.created_at,
+        updatedAt: ws.updated_at,
+        _count: {
+          notes: 0,
+          todoLists: 0,
+          members: 1,
+        },
+      }
+
+      setWorkspacesAction([...workspaces, newWs])
+      setCreateOpen(false)
+      setNewTitle('')
+      setNewDescription('')
+      setNewColor('#059669')
+      toast.success('Workspace created')
     } catch {
       toast.error('Failed to create workspace')
+    } finally {
+      setIsCreating(false)
     }
   }
 
@@ -135,28 +244,104 @@ export function WorkspacesView() {
     setSelectedWs(ws)
     setWsDetailOpen(true)
     try {
-      const res = await fetch(`/api/workspaces/${ws.id}/members`)
-      if (res.ok) setWsMembers(await res.json())
+      const { data, error } = await supabase
+        .from('workspace_members')
+        .select('id, user_id, role, joined_at, profiles(id, name, email, image)')
+        .eq('workspace_id', ws.id)
+
+      if (error) throw error
+
+      const formatted = data.map((m: any) => ({
+        id: m.id,
+        userId: m.user_id,
+        role: m.role,
+        joinedAt: m.joined_at,
+        user: {
+          id: m.profiles.id,
+          name: m.profiles.name,
+          email: m.profiles.email,
+          image: m.profiles.image,
+        },
+      }))
+
+      setWsMembers(formatted)
     } catch { /* ignore */ }
   }
 
   const handleInviteMember = async () => {
     if (!selectedWs || !inviteEmail.trim()) return
+
+    // Enforce collaborator limit based on subscription tier
+    const membersCount = wsMembers.filter((m) => m.role === 'member').length
+    if (userTier === 'free' && membersCount >= 2) {
+      toast.error('Free tier is limited to 2 collaborators. Please upgrade to Premium or Ultra Premium!')
+      return
+    }
+    if (userTier === 'premium' && membersCount >= 20) {
+      toast.error('Premium tier is limited to 20 collaborators. Please upgrade to Ultra Premium!')
+      return
+    }
+    if (userTier === 'ultra' && membersCount >= 70) {
+      toast.error('Ultra Premium tier is limited to 70 collaborators.')
+      return
+    }
+
     setIsInviting(true)
     try {
-      const res = await fetch(`/api/workspaces/${selectedWs.id}/members`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: inviteEmail.trim(), role: 'member' }),
-      })
-      if (res.ok) {
-        setWsMembers([...wsMembers, await res.json()])
-        setInviteEmail('')
-        toast.success(`Invited ${inviteEmail.trim()}`)
-      } else {
-        const data = await res.json()
-        toast.error(data.error || 'Failed to invite')
+      const { data: profileData, error: profileErr } = await supabase
+        .rpc('get_profile_by_email', { search_email: inviteEmail.trim().toLowerCase() })
+
+      const profile = profileData && profileData.length > 0 ? profileData[0] : null
+
+      if (profileErr || !profile) {
+        toast.error('User with this email not found')
+        return
       }
+
+      const alreadyMember = wsMembers.some((m) => m.userId === profile.id)
+      if (alreadyMember) {
+        toast.error('User is already a member of this workspace')
+        return
+      }
+
+      const memberId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2)
+      const { data: newMember, error: insertErr } = await supabase
+        .from('workspace_members')
+        .insert({
+          id: memberId,
+          workspace_id: selectedWs.id,
+          user_id: profile.id,
+          role: 'member',
+        })
+        .select()
+        .single()
+
+      if (insertErr) {
+        toast.error(insertErr.message || 'Failed to invite member')
+        return
+      }
+
+      const formatted = {
+        id: newMember.id,
+        userId: newMember.user_id,
+        role: newMember.role,
+        joinedAt: newMember.joined_at,
+        user: {
+          id: profile.id,
+          name: profile.name,
+          email: profile.email,
+          image: profile.image,
+        },
+      }
+
+      setWsMembers([...wsMembers, formatted])
+      setWorkspacesAction(workspaces.map((w) => 
+        w.id === selectedWs.id 
+          ? { ...w, _count: { ...w._count, members: w._count.members + 1 } }
+          : w
+      ))
+      setInviteEmail('')
+      toast.success(`Invited ${inviteEmail.trim()}`)
     } catch {
       toast.error('Failed to invite member')
     } finally {
@@ -164,20 +349,30 @@ export function WorkspacesView() {
     }
   }
 
-  const handleRemoveMember = async (memberId: string) => {
-    if (!selectedWs) return
+  const handleRemoveMember = async () => {
+    if (!selectedWs || !memberToRemove) return
     try {
-      const res = await fetch(`/api/workspaces/${selectedWs.id}/members`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ memberId }),
-      })
-      if (res.ok) {
-        setWsMembers(wsMembers.filter((m) => m.id !== memberId))
-        toast.success('Member removed')
+      const { error } = await supabase
+        .from('workspace_members')
+        .delete()
+        .eq('id', memberToRemove.id)
+
+      if (error) {
+        toast.error(error.message || 'Failed to remove member')
+        return
       }
+
+      setWsMembers(wsMembers.filter((m) => m.id !== memberToRemove.id))
+      setWorkspacesAction(workspaces.map((w) => 
+        w.id === selectedWs.id 
+          ? { ...w, _count: { ...w._count, members: Math.max(1, w._count.members - 1) } }
+          : w
+      ))
+      toast.success('Member removed')
     } catch {
       toast.error('Failed to remove member')
+    } finally {
+      setMemberToRemove(null)
     }
   }
 
@@ -193,21 +388,45 @@ export function WorkspacesView() {
     if (!selectedWs) return
     setIsSaving(true)
     try {
-      const res = await fetch(`/api/workspaces/${selectedWs.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: editTitle.trim() || 'Untitled Workspace', description: editDescription.trim() || null, color: editColor }),
-      })
-      if (res.ok) {
-        const updated = await res.json()
-        setWorkspacesAction(workspaces.map((w) => (w.id === selectedWs.id ? updated : w)))
-        setSelectedWs(updated)
-        setEditOpen(false)
-        setWsDetailOpen(false)
-        toast.success('Workspace updated')
-      } else {
-        toast.error('Failed to update workspace')
+      const cleanTitle = editTitle.trim() || 'Untitled Workspace'
+      const cleanDesc = editDescription.trim() || null
+      const encryptedTitle = await encryptWorkspaceTitle(cleanTitle)
+      const encryptedDesc = await encryptWorkspaceDescription(cleanDesc)
+
+      const { data: updated, error } = await supabase
+        .from('workspaces')
+        .update({
+          title: encryptedTitle,
+          description: encryptedDesc,
+          color: editColor,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', selectedWs.id)
+        .select()
+        .single()
+
+      if (error) {
+        toast.error(error.message || 'Failed to update workspace')
+        return
       }
+
+      const updatedWs: WorkspaceData = {
+        id: updated.id,
+        title: cleanTitle,
+        description: cleanDesc,
+        color: updated.color,
+        icon: updated.icon,
+        ownerId: updated.owner_id,
+        createdAt: updated.created_at,
+        updatedAt: updated.updated_at,
+        _count: selectedWs._count,
+      }
+
+      setWorkspacesAction(workspaces.map((w) => (w.id === selectedWs.id ? updatedWs : w)))
+      setSelectedWs(updatedWs)
+      setEditOpen(false)
+      setWsDetailOpen(false)
+      toast.success('Workspace updated')
     } catch {
       toast.error('Failed to update workspace')
     } finally {
@@ -218,38 +437,82 @@ export function WorkspacesView() {
   const handleDeleteWorkspace = async () => {
     if (!selectedWs) return
     try {
-      const res = await fetch(`/api/workspaces/${selectedWs.id}`, { method: 'DELETE' })
-      if (res.ok) {
-        // Remove workspace from store
-        setWorkspacesAction(workspaces.filter((w) => w.id !== selectedWs.id))
-        // Cascade delete: remove all notes and todos belonging to this workspace
-        setNotes(notes.filter((n) => n.workspaceId !== selectedWs.id))
-        setTodoLists(todoLists.filter((t) => t.workspaceId !== selectedWs.id))
-        setWsDetailOpen(false)
-        setDeleteConfirmOpen(false)
-        setSelectedWs(null)
-        toast.success('Workspace and all its notes & todos deleted')
+      const { error } = await supabase
+        .from('workspaces')
+        .delete()
+        .eq('id', selectedWs.id)
+
+      if (error) {
+        toast.error(error.message || 'Failed to delete workspace')
+        return
       }
+
+      // Remove workspace from store
+      setWorkspacesAction(workspaces.filter((w) => w.id !== selectedWs.id))
+      // Cascade delete: remove all notes and todos belonging to this workspace
+      setNotes(notes.filter((n) => n.workspaceId !== selectedWs.id))
+      setTodoLists(todoLists.filter((t) => t.workspaceId !== selectedWs.id))
+      setWsDetailOpen(false)
+      setDeleteConfirmOpen(false)
+      setSelectedWs(null)
+      toast.success('Workspace and all its notes & todos deleted')
     } catch { toast.error('Failed to delete workspace') }
   }
 
   const handleQuickCreateNote = async () => {
     if (!currentUser || !selectedWs) return
+
+    // Enforce Free tier notes limit (10 notes max)
+    const ownedNotesCount = notes.filter((n) => n.authorId === currentUser.id && !n.isArchived).length
+    if (userTier === 'free' && ownedNotesCount >= 10) {
+      toast.error('Free tier is limited to 10 notes. Please upgrade to Premium or Ultra Premium!')
+      return
+    }
+
     const plainTitle = quickNoteTitle.trim() || 'Untitled Note'
     setIsQuickCreating(true)
     try {
       const encryptedTitle = await encryptNoteTitle(plainTitle)
-      const res = await fetch('/api/notes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: encryptedTitle, authorId: currentUser.id, workspaceId: selectedWs.id }),
-      })
-      const data = await res.json()
-      if (res.ok) {
-        addNote(data)
-        setQuickNoteTitle('')
-        toast.success('Note added to workspace')
+      const noteId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2)
+      
+      const { data: note, error } = await supabase
+        .from('notes')
+        .insert({
+          id: noteId,
+          title: encryptedTitle,
+          content: '',
+          workspace_id: selectedWs.id,
+          author_id: currentUser.id,
+        })
+        .select()
+        .single()
+
+      if (error) {
+        toast.error(error.message || 'Failed to create note')
+        return
       }
+
+      const formatted = {
+        id: note.id,
+        title: note.title,
+        content: note.content,
+        workspaceId: note.workspace_id,
+        authorId: note.author_id,
+        isPinned: note.is_pinned,
+        isArchived: note.is_archived,
+        createdAt: note.created_at,
+        updatedAt: note.updated_at,
+      }
+
+      addNote(formatted)
+      logActivity('note_create')
+      setWorkspacesAction(workspaces.map((w) => 
+        w.id === selectedWs.id 
+          ? { ...w, _count: { ...w._count, notes: w._count.notes + 1 } }
+          : w
+      ))
+      setQuickNoteTitle('')
+      toast.success('Note added to workspace')
     } catch {
       toast.error('Failed to create note')
     } finally {
@@ -259,21 +522,57 @@ export function WorkspacesView() {
 
   const handleQuickCreateTodo = async () => {
     if (!currentUser || !selectedWs) return
+
+    // Enforce Free tier todo lists limit (3 todo lists max)
+    const ownedTodoListsCount = todoLists.filter((t) => t.authorId === currentUser.id && !t.isArchived).length
+    if (userTier === 'free' && ownedTodoListsCount >= 3) {
+      toast.error('Free tier is limited to 3 todo lists. Please upgrade to Premium or Ultra Premium!')
+      return
+    }
+
     const plainTitle = quickTodoTitle.trim() || 'Untitled Todo List'
     setIsQuickCreating(true)
     try {
       const encryptedTitle = await encryptTodoTitle(plainTitle)
-      const res = await fetch('/api/todos', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: encryptedTitle, authorId: currentUser.id, workspaceId: selectedWs.id }),
-      })
-      const data = await res.json()
-      if (res.ok) {
-        addTodoList(data)
-        setQuickTodoTitle('')
-        toast.success('Todo list added to workspace')
+      const listId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2)
+      
+      const { data: todoList, error } = await supabase
+        .from('todo_lists')
+        .insert({
+          id: listId,
+          title: encryptedTitle,
+          workspace_id: selectedWs.id,
+          author_id: currentUser.id,
+        })
+        .select()
+        .single()
+
+      if (error) {
+        toast.error(error.message || 'Failed to create todo list')
+        return
       }
+
+      const formatted = {
+        id: todoList.id,
+        title: todoList.title,
+        content: '',
+        workspaceId: todoList.workspace_id,
+        authorId: todoList.author_id,
+        isPinned: todoList.is_pinned,
+        isArchived: todoList.is_archived,
+        createdAt: todoList.created_at,
+        updatedAt: todoList.updated_at,
+        items: [],
+      }
+
+      addTodoList(formatted)
+      setWorkspacesAction(workspaces.map((w) => 
+        w.id === selectedWs.id 
+          ? { ...w, _count: { ...w._count, todoLists: w._count.todoLists + 1 } }
+          : w
+      ))
+      setQuickTodoTitle('')
+      toast.success('Todo list added to workspace')
     } catch {
       toast.error('Failed to create todo list')
     } finally {
@@ -437,14 +736,16 @@ export function WorkspacesView() {
                 <button
                   key={c.name}
                   type="button"
+                  aria-label={`Select color ${c.name}`}
                   className="w-6 h-6 rounded-full border-2 transition-all hover:scale-110"
                   style={{ backgroundColor: c.value, borderColor: newColor === c.value ? (theme === 'dark' ? '#fff' : '#000') : 'transparent' }}
                   onClick={() => setNewColor(c.value)}
                 />
               ))}
             </div>
-            <Button className="w-full bg-gradient-to-r from-[#7c3aed] to-[#8b5cf6] text-white rounded-lg" onClick={handleCreate}>
-              Create Workspace
+            <Button className="w-full bg-gradient-to-r from-[#7c3aed] to-[#8b5cf6] text-white rounded-lg" onClick={handleCreate} disabled={isCreating}>
+              {isCreating ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+              {isCreating ? 'Creating...' : 'Create Workspace'}
             </Button>
           </div>
         </DialogContent>
@@ -542,7 +843,7 @@ export function WorkspacesView() {
                       </div>
                     </div>
                     {member.role !== 'owner' && (
-                      <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => handleRemoveMember(member.id)}>
+                      <Button aria-label="Remove member" variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => setMemberToRemove({ id: member.id, name: member.user.name || member.user.email })}>
                         <Trash2 className="w-3.5 h-3.5" />
                       </Button>
                     )}
@@ -604,6 +905,7 @@ export function WorkspacesView() {
                 <button
                   key={c.name}
                   type="button"
+                  aria-label={`Select color ${c.name}`}
                   className="w-6 h-6 rounded-full border-2 transition-all hover:scale-110"
                   style={{ backgroundColor: c.value, borderColor: editColor === c.value ? (theme === 'dark' ? '#fff' : '#000') : 'transparent' }}
                   onClick={() => setEditColor(c.value)}
@@ -642,6 +944,24 @@ export function WorkspacesView() {
               onClick={handleDeleteWorkspace}
             >
               Delete Everything
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Remove Member Confirmation */}
+      <AlertDialog open={!!memberToRemove} onOpenChange={(open) => { if (!open) setMemberToRemove(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove Team Member?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to remove &ldquo;{memberToRemove?.name}&rdquo; from this workspace? They will lose access to all notes and todos.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleRemoveMember} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Remove
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

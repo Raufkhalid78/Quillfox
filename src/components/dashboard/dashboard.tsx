@@ -1,12 +1,14 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAppStore, type WorkspaceData } from '@/stores/app-store'
 import { decryptNoteContent, decryptNoteTitle, decryptTodoTitle, encryptNoteTitle, encryptTodoTitle } from '@/lib/encrypted-api'
+import { supabase } from '@/lib/supabase'
+import { logActivity } from '@/lib/activity'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -14,6 +16,14 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Separator } from '@/components/ui/separator'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { toast } from 'sonner'
 import { AppSidebar } from '@/components/shared/app-sidebar'
 import {
@@ -27,27 +37,24 @@ import {
   FolderOpen,
   Loader2,
   Eye,
-  Clock,
   FileText,
   ListTodo,
-  Users,
   Sparkles,
-  ShieldCheck,
-  ShieldAlert,
-  UserPlus,
-  Mail,
-  Crown,
-  Trash2,
-  Check,
-  PenLine,
-  ChevronRight,
-  Layers,
   TrendingUp,
   Activity,
-  Home,
+  Crown,
+  Layers,
+  Clock,
+  Trash2,
+  ChevronRight,
+  Mail,
 } from 'lucide-react'
+import { DashboardHeader } from './dashboard-header'
+import { DashboardQuickActions } from './dashboard-quick-actions'
+import { DashboardRecentItems } from './dashboard-recent-items'
 import { useTheme } from 'next-themes'
 import { format, formatDistanceToNow } from 'date-fns'
+import { DashboardAnalytics } from './dashboard-analytics'
 
 const stagger = {
   hidden: {},
@@ -56,7 +63,7 @@ const stagger = {
 
 const fadeUp = {
   hidden: { opacity: 0, y: 20 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] } },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] } },
 }
 
 export function Dashboard() {
@@ -74,16 +81,9 @@ export function Dashboard() {
   const setTodoListsAction = useAppStore((s) => s.setTodoLists)
   const setWorkspacesAction = useAppStore((s) => s.setWorkspaces)
   const isEncryptedSession = useAppStore((s) => s.isEncryptedSession)
+  const userTier = useAppStore((s) => s.userTier)
 
   const [isLoading, setIsLoading] = useState(true)
-  const [dialogOpen, setDialogOpen] = useState(false)
-  const [newNoteTitle, setNewNoteTitle] = useState('')
-  const [newNoteWorkspace, setNewNoteWorkspace] = useState<string>('')
-  const [newTodoTitle, setNewTodoTitle] = useState('')
-  const [newTodoWorkspace, setNewTodoWorkspace] = useState<string>('')
-  const [newWsTitle, setNewWsTitle] = useState('')
-  const [newWsDescription, setNewWsDescription] = useState('')
-  const [newWsColor, setNewWsColor] = useState('#059669')
   const [selectedWs, setSelectedWs] = useState<WorkspaceData | null>(null)
   const [wsDetailOpen, setWsDetailOpen] = useState(false)
   const [wsMembers, setWsMembers] = useState<Array<{ id: string; userId: string; role: string; joinedAt: string; user: { id: string; name: string | null; email: string; image: string | null } }>>([])
@@ -93,21 +93,113 @@ export function Dashboard() {
   const [quickTodoTitle, setQuickTodoTitle] = useState('')
   const [isQuickCreating, setIsQuickCreating] = useState(false)
 
-  const [decryptedNotes, setDecryptedNotes] = useState<Map<string, { title: string; preview: string }>>(new Map())
-  const [decryptedTodos, setDecryptedTodos] = useState<Map<string, string>>(new Map())
+  const [decryptedNotes, setDecryptedNotes] = useState<Map<string, { title: string; preview: string; updatedAt: string }>>(new Map())
+  const [decryptedTodos, setDecryptedTodos] = useState<Map<string, { title: string; updatedAt: string }>>(new Map())
+  const decryptedNotesRef = useRef<Map<string, { title: string; preview: string; updatedAt: string }>>(new Map())
+  const decryptedTodosRef = useRef<Map<string, { title: string; updatedAt: string }>>(new Map())
 
   const fetchData = async () => {
     if (!currentUser) return
     setIsLoading(true)
     try {
-      const [notesRes, todosRes, wsRes] = await Promise.all([
-        fetch(`/api/notes?userId=${currentUser.id}`),
-        fetch(`/api/todos?userId=${currentUser.id}`),
-        fetch(`/api/workspaces?userId=${currentUser.id}`),
-      ])
-      if (notesRes.ok) setNotes(await notesRes.json())
-      if (todosRes.ok) setTodoListsAction(await todosRes.json())
-      if (wsRes.ok) setWorkspacesAction(await wsRes.json())
+      // 1. Fetch non-archived notes
+      const { data: notesData, error: notesErr } = await supabase
+        .from('notes')
+        .select('*')
+        .eq('author_id', currentUser.id)
+        .eq('is_archived', false)
+
+      // 2. Fetch non-archived todo lists and their items
+      const { data: todosData, error: todosErr } = await supabase
+        .from('todo_lists')
+        .select('*, todo_items(*)')
+        .eq('author_id', currentUser.id)
+        .eq('is_archived', false)
+
+      // 3. Fetch owned workspaces
+      const { data: ownedWorkspaces, error: ownedErr } = await supabase
+        .from('workspaces')
+        .select('*, workspace_members(user_id), notes(id, is_archived), todo_lists(id, is_archived)')
+        .eq('owner_id', currentUser.id)
+
+      // 4. Fetch workspaces user is a member of
+      const { data: memberOf, error: memberErr } = await supabase
+        .from('workspace_members')
+        .select('workspace_id, workspaces(*, workspace_members(user_id), notes(id, is_archived), todo_lists(id, is_archived))')
+        .eq('user_id', currentUser.id)
+        .not('workspaces.owner_id', 'eq', currentUser.id)
+
+      if (notesErr || todosErr || ownedErr || memberErr) {
+        toast.error('Failed to load data')
+        return
+      }
+
+      // Format notes
+      const formattedNotes = (notesData || []).map((n: any) => ({
+        id: n.id,
+        title: n.title,
+        content: n.content,
+        workspaceId: n.workspace_id,
+        authorId: n.author_id,
+        isPinned: n.is_pinned,
+        isArchived: n.is_archived,
+        createdAt: n.created_at,
+        updatedAt: n.updated_at,
+      }))
+      setNotes(formattedNotes)
+
+      // Format todos
+      const formattedTodos = (todosData || []).map((t: any) => ({
+        id: t.id,
+        title: t.title,
+        content: '',
+        workspaceId: t.workspace_id,
+        authorId: t.author_id,
+        isPinned: t.is_pinned,
+        isArchived: t.is_archived,
+        createdAt: t.created_at,
+        updatedAt: t.updated_at,
+        items: (t.todo_items || [])
+          .sort((a: any, b: any) => a.order - b.order)
+          .map((i: any) => ({
+            id: i.id,
+            title: i.title,
+            completed: i.completed,
+            order: i.order,
+            todoListId: i.todo_list_id,
+            completedAt: i.completed_at,
+          })),
+      }))
+      setTodoListsAction(formattedTodos)
+
+      // Format workspaces
+      const memberWorkspaces = (memberOf || [])
+        .map((m: any) => m.workspaces)
+        .filter(Boolean)
+      const allWs = [...(ownedWorkspaces || []), ...memberWorkspaces]
+      const formattedWorkspaces = allWs.map((ws: any) => {
+        const activeNotesCount = (ws.notes || []).filter((n: any) => !n.is_archived).length
+        const activeTodosCount = (ws.todo_lists || []).filter((t: any) => !t.is_archived).length
+        
+        return {
+          id: ws.id,
+          title: ws.title,
+          description: ws.description,
+          color: ws.color,
+          icon: ws.icon,
+          ownerId: ws.owner_id,
+          createdAt: ws.created_at,
+          updatedAt: ws.updated_at,
+          _count: {
+            notes: activeNotesCount,
+            todoLists: activeTodosCount,
+            members: (ws.workspace_members || []).length || 1,
+          },
+        }
+      })
+      formattedWorkspaces.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+      setWorkspacesAction(formattedWorkspaces)
+
     } catch {
       toast.error('Failed to load data')
     } finally {
@@ -119,100 +211,47 @@ export function Dashboard() {
 
   useEffect(() => {
     const decryptData = async () => {
-      const noteMap = new Map<string, { title: string; preview: string }>()
-      const todoMap = new Map<string, string>()
+      const currentNotesMap = decryptedNotesRef.current
+      const currentTodosMap = decryptedTodosRef.current
+      
+      const noteMap = new Map(currentNotesMap)
+      const todoMap = new Map(currentTodosMap)
+      
+      let notesChanged = false
+      let todosChanged = false
+
       await Promise.all(
         notes.map(async (n) => {
+          const existing = noteMap.get(n.id)
+          if (existing && existing.updatedAt === n.updatedAt) return
           const title = await decryptNoteTitle(n.title)
-          const preview = await decryptNoteContent(n.content.substring(0, 120))
-          noteMap.set(n.id, { title, preview: preview || 'Empty note...' })
+          const decryptedContent = await decryptNoteContent(n.content)
+          const preview = decryptedContent.substring(0, 120)
+          noteMap.set(n.id, { title, preview: preview || 'Empty note...', updatedAt: n.updatedAt })
+          notesChanged = true
         })
       )
       await Promise.all(
         todoLists.map(async (t) => {
+          const existing = todoMap.get(t.id)
+          if (existing && existing.updatedAt === t.updatedAt) return
           const title = await decryptTodoTitle(t.title)
-          todoMap.set(t.id, title)
+          todoMap.set(t.id, { title, updatedAt: t.updatedAt })
+          todosChanged = true
         })
       )
-      setDecryptedNotes(noteMap)
-      setDecryptedTodos(todoMap)
+      
+      if (notesChanged) {
+        decryptedNotesRef.current = noteMap
+        setDecryptedNotes(noteMap)
+      }
+      if (todosChanged) {
+        decryptedTodosRef.current = todoMap
+        setDecryptedTodos(todoMap)
+      }
     }
     if (!isLoading) decryptData()
   }, [notes, todoLists, isLoading])
-
-  const handleCreateNote = async () => {
-    if (!currentUser) return
-    const plainTitle = newNoteTitle.trim() || 'Untitled Note'
-    try {
-      const encryptedTitle = await encryptNoteTitle(plainTitle)
-      const res = await fetch('/api/notes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: encryptedTitle, authorId: currentUser.id, workspaceId: newNoteWorkspace || null }),
-      })
-      const data = await res.json()
-      if (res.ok) {
-        addNote(data)
-        setDialogOpen(false)
-        setNewNoteTitle('')
-        setNewNoteWorkspace('')
-        selectNote(data.id)
-        toast.success('Note created')
-      }
-    } catch { toast.error('Failed to create note') }
-  }
-
-  const handleCreateTodo = async () => {
-    if (!currentUser) return
-    const plainTitle = newTodoTitle.trim() || 'Untitled Todo List'
-    try {
-      const encryptedTitle = await encryptTodoTitle(plainTitle)
-      const res = await fetch('/api/todos', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: encryptedTitle, authorId: currentUser.id, workspaceId: newTodoWorkspace || null }),
-      })
-      const data = await res.json()
-      if (res.ok) {
-        addTodoList(data)
-        setDialogOpen(false)
-        setNewTodoTitle('')
-        setNewTodoWorkspace('')
-        selectTodo(data.id)
-        toast.success('Todo list created')
-      }
-    } catch { toast.error('Failed to create todo list') }
-  }
-
-  const workspaceColors = [
-    { name: 'emerald', value: '#059669' },
-    { name: 'teal', value: '#0d9488' },
-    { name: 'amber', value: '#d97706' },
-    { name: 'rose', value: '#e11d48' },
-    { name: 'violet', value: '#7c3aed' },
-    { name: 'blue', value: '#2563eb' },
-  ]
-
-  const handleCreateWorkspace = async () => {
-    if (!currentUser) return
-    const title = newWsTitle.trim() || 'Untitled Workspace'
-    try {
-      const res = await fetch('/api/workspaces', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, description: newWsDescription.trim() || null, color: newWsColor, ownerId: currentUser.id }),
-      })
-      const data = await res.json()
-      if (res.ok) {
-        setWorkspacesAction([...workspaces, data])
-        setDialogOpen(false)
-        setNewWsTitle('')
-        setNewWsDescription('')
-        setNewWsColor('#059669')
-        toast.success('Workspace created')
-      }
-    } catch { toast.error('Failed to create workspace') }
-  }
 
   const handleQuickCreateNote = async () => {
     if (!currentUser || !selectedWs) return
@@ -220,19 +259,43 @@ export function Dashboard() {
     setIsQuickCreating(true)
     try {
       const encryptedTitle = await encryptNoteTitle(plainTitle)
-      const res = await fetch('/api/notes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: encryptedTitle, authorId: currentUser.id, workspaceId: selectedWs.id }),
-      })
-      const data = await res.json()
-      if (res.ok) {
-        addNote(data)
-        setQuickNoteTitle('')
-        toast.success('Note added to workspace')
+      const noteId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2)
+      
+      const { data, error } = await supabase
+        .from('notes')
+        .insert({
+          id: noteId,
+          title: encryptedTitle,
+          content: '',
+          author_id: currentUser.id,
+          workspace_id: selectedWs.id,
+        })
+        .select()
+        .single()
+
+      if (error) throw error
+
+      const formatted = {
+        id: data.id,
+        title: data.title,
+        content: data.content,
+        workspaceId: data.workspace_id,
+        authorId: data.author_id,
+        isPinned: data.is_pinned,
+        isArchived: data.is_archived,
+        createdAt: data.created_at,
+        updatedAt: data.updated_at,
       }
-    } catch { toast.error('Failed to create note') }
-    finally { setIsQuickCreating(false) }
+
+      addNote(formatted)
+      logActivity('note_create')
+      setQuickNoteTitle('')
+      toast.success('Note added to workspace')
+    } catch { 
+      toast.error('Failed to create note') 
+    } finally { 
+      setIsQuickCreating(false) 
+    }
   }
 
   const handleQuickCreateTodo = async () => {
@@ -241,77 +304,188 @@ export function Dashboard() {
     setIsQuickCreating(true)
     try {
       const encryptedTitle = await encryptTodoTitle(plainTitle)
-      const res = await fetch('/api/todos', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: encryptedTitle, authorId: currentUser.id, workspaceId: selectedWs.id }),
-      })
-      const data = await res.json()
-      if (res.ok) {
-        addTodoList(data)
-        setQuickTodoTitle('')
-        toast.success('Todo list added to workspace')
+      const listId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2)
+
+      const { data, error } = await supabase
+        .from('todo_lists')
+        .insert({
+          id: listId,
+          title: encryptedTitle,
+          author_id: currentUser.id,
+          workspace_id: selectedWs.id,
+        })
+        .select()
+        .single()
+
+      if (error) throw error
+
+      const formatted = {
+        id: data.id,
+        title: data.title,
+        content: '',
+        workspaceId: data.workspace_id,
+        authorId: data.author_id,
+        isPinned: data.is_pinned,
+        isArchived: data.is_archived,
+        createdAt: data.created_at,
+        updatedAt: data.updated_at,
+        items: [],
       }
-    } catch { toast.error('Failed to create todo list') }
-    finally { setIsQuickCreating(false) }
+
+      addTodoList(formatted)
+      setQuickTodoTitle('')
+      toast.success('Todo list added to workspace')
+    } catch { 
+      toast.error('Failed to create todo list') 
+    } finally { 
+      setIsQuickCreating(false) 
+    }
   }
 
   const handleOpenWsDetail = async (ws: WorkspaceData) => {
     setSelectedWs(ws)
     setWsDetailOpen(true)
     try {
-      const res = await fetch(`/api/workspaces/${ws.id}/members`)
-      if (res.ok) setWsMembers(await res.json())
+      const { data, error } = await supabase
+        .from('workspace_members')
+        .select('id, user_id, role, joined_at, profiles(id, name, email, image)')
+        .eq('workspace_id', ws.id)
+
+      if (error) throw error
+
+      const formatted = data.map((m: any) => ({
+        id: m.id,
+        userId: m.user_id,
+        role: m.role,
+        joinedAt: m.joined_at,
+        user: {
+          id: m.profiles.id,
+          name: m.profiles.name,
+          email: m.profiles.email,
+          image: m.profiles.image,
+        },
+      }))
+
+      setWsMembers(formatted)
     } catch { /* ignore */ }
   }
 
   const handleInviteMember = async () => {
     if (!selectedWs || !inviteEmail.trim()) return
+
+    // Enforce collaborator limit
+    const membersCount = wsMembers.filter((m) => m.role === 'member').length
+    const extraCollabs = useAppStore.getState().extraCollaborators
+    
+    let maxCollabs = 2
+    if (userTier === 'premium') maxCollabs = 15
+    if (userTier === 'ultra') maxCollabs = 35
+    maxCollabs += extraCollabs
+
+    if (membersCount >= maxCollabs) {
+      toast.error(`Limit reached: Maximum ${maxCollabs} collaborators allowed. Please upgrade or buy an add-on.`)
+      return
+    }
+
     setIsInviting(true)
     try {
-      const res = await fetch(`/api/workspaces/${selectedWs.id}/members`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: inviteEmail.trim(), role: 'member' }),
-      })
-      if (res.ok) {
-        setWsMembers([...wsMembers, await res.json()])
-        setInviteEmail('')
-        toast.success(`Invited ${inviteEmail.trim()}`)
-      } else {
-        const data = await res.json()
-        toast.error(data.error || 'Failed to invite')
+      const { data: profileData, error: profileErr } = await supabase
+        .rpc('get_profile_by_email', { search_email: inviteEmail.trim().toLowerCase() })
+      
+      const profile = profileData && profileData.length > 0 ? profileData[0] : null
+
+      if (profileErr || !profile) {
+        toast.error('User with this email not found')
+        return
       }
-    } catch { toast.error('Failed to invite member') }
-    finally { setIsInviting(false) }
+
+      const alreadyMember = wsMembers.some((m) => m.userId === profile.id)
+      if (alreadyMember) {
+        toast.error('User is already a member of this workspace')
+        return
+      }
+
+      const memberId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2)
+      const { data: newMember, error: insertErr } = await supabase
+        .from('workspace_members')
+        .insert({
+          id: memberId,
+          workspace_id: selectedWs.id,
+          user_id: profile.id,
+          role: 'member',
+        })
+        .select()
+        .single()
+
+      if (insertErr) throw insertErr
+
+      const formatted = {
+        id: newMember.id,
+        userId: newMember.user_id,
+        role: newMember.role,
+        joinedAt: newMember.joined_at,
+        user: {
+          id: profile.id,
+          name: profile.name,
+          email: profile.email,
+          image: profile.image,
+        },
+      }
+
+      setWsMembers([...wsMembers, formatted])
+      setWorkspacesAction(workspaces.map((w) => 
+        w.id === selectedWs.id 
+          ? { ...w, _count: { ...w._count, members: w._count.members + 1 } }
+          : w
+      ))
+      setInviteEmail('')
+      toast.success(`Invited ${inviteEmail.trim()}`)
+    } catch { 
+      toast.error('Failed to invite member') 
+    } finally { 
+      setIsInviting(false) 
+    }
   }
 
   const handleRemoveMember = async (memberId: string) => {
     if (!selectedWs) return
     try {
-      const res = await fetch(`/api/workspaces/${selectedWs.id}/members`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ memberId }),
-      })
-      if (res.ok) {
-        setWsMembers(wsMembers.filter((m) => m.id !== memberId))
-        toast.success('Member removed')
-      }
-    } catch { toast.error('Failed to remove member') }
+      const { error } = await supabase
+        .from('workspace_members')
+        .delete()
+        .eq('id', memberId)
+      
+      if (error) throw error
+
+      setWsMembers(wsMembers.filter((m) => m.id !== memberId))
+      setWorkspacesAction(workspaces.map((w) => 
+        w.id === selectedWs.id 
+          ? { ...w, _count: { ...w._count, members: Math.max(1, w._count.members - 1) } }
+          : w
+      ))
+      toast.success('Member removed')
+    } catch { 
+      toast.error('Failed to remove member') 
+    }
   }
 
   const handleDeleteWorkspace = async () => {
     if (!selectedWs) return
     try {
-      const res = await fetch(`/api/workspaces/${selectedWs.id}`, { method: 'DELETE' })
-      if (res.ok) {
-        setWorkspacesAction(workspaces.filter((w) => w.id !== selectedWs.id))
-        setWsDetailOpen(false)
-        setSelectedWs(null)
-        toast.success('Workspace deleted')
-      }
-    } catch { toast.error('Failed to delete workspace') }
+      const { error } = await supabase
+        .from('workspaces')
+        .delete()
+        .eq('id', selectedWs.id)
+
+      if (error) throw error
+
+      setWorkspacesAction(workspaces.filter((w) => w.id !== selectedWs.id))
+      setWsDetailOpen(false)
+      setSelectedWs(null)
+      toast.success('Workspace deleted')
+    } catch { 
+      toast.error('Failed to delete workspace') 
+    }
   }
 
   const recentNotes = notes
@@ -363,51 +537,15 @@ export function Dashboard() {
       {/* ── Main Content ── */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Top bar (visible on mobile, supplementary on desktop) */}
-        <header className="sticky top-0 z-40 flex items-center justify-between h-14 px-4 md:px-8 border-b border-border/40 bg-background/80 backdrop-blur-md">
-          <div className="flex items-center gap-3 min-w-0">
-            {/* Mobile logo */}
-            <div className="md:hidden w-8 h-8 rounded-lg bg-gradient-to-br from-[#059669] to-[#0d9488] text-white flex items-center justify-center shrink-0">
-              <PenLine className="w-3.5 h-3.5" />
-            </div>
-            <h1 className="text-sm font-semibold tracking-tight truncate">QuillFox</h1>
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  {isEncryptedSession ? (
-                    <Badge variant="secondary" className="gap-1 text-[10px] font-medium text-[#059669] bg-[#059669]/10 border-[#059669]/20 shrink-0">
-                      <ShieldCheck className="w-3 h-3" />
-                      <span className="hidden sm:inline">E2E</span>
-                    </Badge>
-                  ) : (
-                    <Badge variant="secondary" className="gap-1 text-[10px] font-medium text-[#d97706] bg-[#d97706]/10 border-[#d97706]/20 shrink-0">
-                      <ShieldAlert className="w-3 h-3" />
-                      <span className="hidden sm:inline">No E2E</span>
-                    </Badge>
-                  )}
-                </TooltipTrigger>
-                <TooltipContent>{isEncryptedSession ? 'End-to-end encryption active' : 'Encryption not set up'}</TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          </div>
-
-          <div className="flex items-center gap-2 shrink-0">
-            {/* Mobile theme toggle */}
-            <Button variant="ghost" size="icon" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} className="md:hidden h-8 w-8">
-              {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-            </Button>
-            <Avatar className="h-7 w-7">
-              <AvatarFallback className="bg-[#059669]/10 text-[#059669] dark:bg-[#059669]/20 dark:text-[#34d399] text-[10px] font-semibold">
-                {getInitials(currentUser.name)}
-              </AvatarFallback>
-            </Avatar>
-            <span className="text-xs font-medium hidden sm:block max-w-[80px] truncate">
-              {currentUser.name || currentUser.email}
-            </span>
-            <Button variant="ghost" size="icon" onClick={logout} className="md:hidden h-8 w-8 text-muted-foreground hover:text-destructive">
-              <LogOut className="w-4 h-4" />
-            </Button>
-          </div>
-        </header>
+        <DashboardHeader
+          isEncryptedSession={isEncryptedSession}
+          theme={theme}
+          setTheme={setTheme}
+          currentUser={currentUser!}
+          userTier={userTier}
+          setView={setView}
+          logout={logout}
+        />
 
         {/* Scrollable content */}
         <main className="flex-1 overflow-y-auto">
@@ -425,103 +563,19 @@ export function Dashboard() {
                 </h2>
               </motion.div>
               <motion.div variants={fadeUp}>
-                <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-                  <DialogTrigger asChild>
-                    <Button className="gap-2 bg-gradient-to-r from-[#059669] to-[#0d9488] text-white hover:from-[#059669]/90 hover:to-[#0d9488]/90 shadow-lg shadow-[#059669]/25 rounded-xl px-5">
-                      <Plus className="w-4 h-4" />
-                      <span>Create new</span>
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="sm:max-w-md">
-                    <DialogHeader>
-                      <DialogTitle>Create New</DialogTitle>
-                      <DialogDescription>What would you like to create?</DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-3 mt-4">
-                      {/* New Note */}
-                      <div className="rounded-xl border border-border/60 p-4 space-y-3 hover:border-[#059669]/40 transition-colors">
-                        <div className="flex items-center gap-3">
-                          <div className="p-2 rounded-lg bg-[#059669]/10 text-[#059669] dark:bg-[#059669]/20 dark:text-[#34d399]">
-                            <StickyNote className="w-4 h-4" />
-                          </div>
-                          <h3 className="font-medium text-sm">New Note</h3>
-                        </div>
-                        <div className="space-y-2">
-                          <Input placeholder="Enter note title..." value={newNoteTitle} onChange={(e) => setNewNoteTitle(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleCreateNote() } }} />
-                          {workspaces.length > 0 && (
-                            <Select value={newNoteWorkspace} onValueChange={(v) => setNewNoteWorkspace(v === '__none__' ? '' : v)}>
-                              <SelectTrigger className="w-full h-9 text-xs rounded-lg">
-                                <SelectValue placeholder="Assign to workspace (optional)" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="__none__">No workspace</SelectItem>
-                                {workspaces.map((ws) => (
-                                  <SelectItem key={ws.id} value={ws.id}>
-                                    <span className="flex items-center gap-1.5">
-                                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: ws.color }} />
-                                      {ws.title}
-                                    </span>
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          )}
-                          <Button size="sm" className="w-full bg-gradient-to-r from-[#059669] to-[#0d9488] text-white rounded-lg" onClick={handleCreateNote}>Create Note</Button>
-                        </div>
-                      </div>
-                      {/* New Todo */}
-                      <div className="rounded-xl border border-border/60 p-4 space-y-3 hover:border-[#d97706]/40 transition-colors">
-                        <div className="flex items-center gap-3">
-                          <div className="p-2 rounded-lg bg-[#d97706]/10 text-[#d97706] dark:bg-[#d97706]/20 dark:text-[#fbbf24]">
-                            <CheckSquare className="w-4 h-4" />
-                          </div>
-                          <h3 className="font-medium text-sm">New Todo List</h3>
-                        </div>
-                        <div className="space-y-2">
-                          <Input placeholder="Enter todo list title..." value={newTodoTitle} onChange={(e) => setNewTodoTitle(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleCreateTodo() } }} />
-                          {workspaces.length > 0 && (
-                            <Select value={newTodoWorkspace} onValueChange={(v) => setNewTodoWorkspace(v === '__none__' ? '' : v)}>
-                              <SelectTrigger className="w-full h-9 text-xs rounded-lg">
-                                <SelectValue placeholder="Assign to workspace (optional)" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="__none__">No workspace</SelectItem>
-                                {workspaces.map((ws) => (
-                                  <SelectItem key={ws.id} value={ws.id}>
-                                    <span className="flex items-center gap-1.5">
-                                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: ws.color }} />
-                                      {ws.title}
-                                    </span>
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          )}
-                          <Button size="sm" className="w-full bg-gradient-to-r from-[#d97706] to-[#f59e0b] text-white rounded-lg" onClick={handleCreateTodo}>Create Todo List</Button>
-                        </div>
-                      </div>
-                      {/* New Workspace */}
-                      <div className="rounded-xl border border-border/60 p-4 space-y-3 hover:border-[#7c3aed]/40 transition-colors">
-                        <div className="flex items-center gap-3">
-                          <div className="p-2 rounded-lg bg-[#7c3aed]/10 text-[#7c3aed] dark:bg-[#7c3aed]/20 dark:text-[#a78bfa]">
-                            <FolderOpen className="w-4 h-4" />
-                          </div>
-                          <h3 className="font-medium text-sm">New Workspace</h3>
-                        </div>
-                        <div className="space-y-2">
-                          <Input placeholder="Workspace title..." value={newWsTitle} onChange={(e) => setNewWsTitle(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleCreateWorkspace() } }} />
-                          <Input placeholder="Description (optional)..." value={newWsDescription} onChange={(e) => setNewWsDescription(e.target.value)} />
-                          <div className="flex gap-2">
-                            {workspaceColors.map((c) => (
-                              <button key={c.name} type="button" className="w-6 h-6 rounded-full border-2 transition-all hover:scale-110" style={{ backgroundColor: c.value, borderColor: newWsColor === c.value ? (theme === 'dark' ? '#fff' : '#000') : 'transparent' }} onClick={() => setNewWsColor(c.value)} />
-                            ))}
-                          </div>
-                          <Button size="sm" className="w-full bg-gradient-to-r from-[#7c3aed] to-[#8b5cf6] text-white rounded-lg" onClick={handleCreateWorkspace}>Create Workspace</Button>
-                        </div>
-                      </div>
-                    </div>
-                  </DialogContent>
-                </Dialog>
+                <DashboardQuickActions
+                  currentUser={currentUser}
+                  workspaces={workspaces}
+                  userTier={userTier}
+                  notes={notes}
+                  todoLists={todoLists}
+                  theme={theme}
+                  addNote={addNote}
+                  addTodoList={addTodoList}
+                  setWorkspacesAction={setWorkspacesAction}
+                  selectNote={selectNote}
+                  selectTodo={selectTodo}
+                />
               </motion.div>
             </motion.div>
 
@@ -550,6 +604,15 @@ export function Dashboard() {
                 </motion.div>
               ))}
             </motion.div>
+
+            {/* ── Productivity Analytics ── */}
+            <motion.section initial="hidden" animate="visible" variants={fadeUp} className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Activity className="w-4 h-4 text-muted-foreground" />
+                <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Workspace Analytics</h3>
+              </div>
+              <DashboardAnalytics />
+            </motion.section>
 
             {/* ── Workspaces ── */}
             {workspaces.length > 0 && (
@@ -591,147 +654,18 @@ export function Dashboard() {
                 {/* ── Two-Column Layout: Notes + Todos ── */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
 
-                  {/* Recent Notes Column */}
-                  <section>
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-2">
-                        <div className="p-1.5 rounded-lg bg-[#059669]/10 text-[#059669] dark:bg-[#059669]/20 dark:text-[#34d399]">
-                          <FileText className="w-3.5 h-3.5" />
-                        </div>
-                        <h3 className="text-sm font-semibold">Notes</h3>
-                        <Badge variant="secondary" className="text-[10px] font-normal">{totalNotes}</Badge>
-                      </div>
-                      {totalNotes > 4 && (
-                        <Button variant="ghost" size="sm" className="text-xs text-muted-foreground h-7 gap-1" onClick={() => setView('notes')}>
-                          View all <ChevronRight className="w-3 h-3" />
-                        </Button>
-                      )}
-                    </div>
-
-                    {recentNotes.length === 0 ? (
-                      <div className="rounded-2xl border border-dashed border-border/50 p-8 text-center">
-                        <StickyNote className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
-                        <p className="text-sm text-muted-foreground">No notes yet</p>
-                        <p className="text-xs text-muted-foreground/60 mt-1">Create your first note to get started</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-2">
-                        <AnimatePresence>
-                          {recentNotes.map((note, index) => {
-                            const decrypted = decryptedNotes.get(note.id)
-                            return (
-                              <motion.div
-                                key={note.id}
-                                initial={{ opacity: 0, x: -12 }}
-                                animate={{ opacity: 1, x: 0 }}
-                                transition={{ delay: index * 0.06, duration: 0.3 }}
-                              >
-                                <button
-                                  onClick={() => selectNote(note.id)}
-                                  className="w-full text-left rounded-xl border border-border/40 bg-card/40 hover:bg-card/70 hover:border-border/70 transition-all duration-200 p-3.5 group"
-                                >
-                                  <div className="flex items-start gap-3">
-                                    <div className="mt-0.5 w-8 h-8 rounded-lg bg-[#059669]/8 dark:bg-[#059669]/15 flex items-center justify-center shrink-0">
-                                      <FileText className="w-3.5 h-3.5 text-[#059669]/70 dark:text-[#34d399]/70" />
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                      <div className="flex items-center gap-2 mb-0.5">
-                                        <p className="text-sm font-medium line-clamp-1">{decrypted?.title || note.title}</p>
-                                        {isEncryptedSession && <ShieldCheck className="w-3 h-3 text-[#059669]/50 shrink-0" />}
-                                      </div>
-                                      <p className="text-xs text-muted-foreground line-clamp-1">{decrypted?.preview || 'Empty note...'}</p>
-                                    </div>
-                                    <div className="flex items-center gap-1.5 shrink-0 text-muted-foreground/50">
-                                      <Clock className="w-3 h-3" />
-                                      <span className="text-[10px]">{formatDistanceToNow(new Date(note.updatedAt), { addSuffix: true })}</span>
-                                    </div>
-                                  </div>
-                                </button>
-                              </motion.div>
-                            )
-                          })}
-                        </AnimatePresence>
-                      </div>
-                    )}
-                  </section>
-
-                  {/* Recent Todos Column */}
-                  <section>
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-2">
-                        <div className="p-1.5 rounded-lg bg-[#d97706]/10 text-[#d97706] dark:bg-[#d97706]/20 dark:text-[#fbbf24]">
-                          <CheckSquare className="w-3.5 h-3.5" />
-                        </div>
-                        <h3 className="text-sm font-semibold">Todo Lists</h3>
-                        <Badge variant="secondary" className="text-[10px] font-normal">{totalTodos}</Badge>
-                      </div>
-                      {totalTodos > 4 && (
-                        <Button variant="ghost" size="sm" className="text-xs text-muted-foreground h-7 gap-1" onClick={() => setView('todos')}>
-                          View all <ChevronRight className="w-3 h-3" />
-                        </Button>
-                      )}
-                    </div>
-
-                    {recentTodos.length === 0 ? (
-                      <div className="rounded-2xl border border-dashed border-border/50 p-8 text-center">
-                        <CheckSquare className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
-                        <p className="text-sm text-muted-foreground">No todo lists yet</p>
-                        <p className="text-xs text-muted-foreground/60 mt-1">Create your first list to get started</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-2">
-                        <AnimatePresence>
-                          {recentTodos.map((todo, index) => {
-                            const completed = todo.items.filter((i) => i.completed).length
-                            const total = todo.items.length
-                            const progress = total > 0 ? (completed / total) * 100 : 0
-                            const decryptedTitle = decryptedTodos.get(todo.id) || todo.title
-                            return (
-                              <motion.div
-                                key={todo.id}
-                                initial={{ opacity: 0, x: -12 }}
-                                animate={{ opacity: 1, x: 0 }}
-                                transition={{ delay: index * 0.06, duration: 0.3 }}
-                              >
-                                <button
-                                  onClick={() => selectTodo(todo.id)}
-                                  className="w-full text-left rounded-xl border border-border/40 bg-card/40 hover:bg-card/70 hover:border-border/70 transition-all duration-200 p-3.5 group"
-                                >
-                                  <div className="flex items-start gap-3">
-                                    <div className="mt-0.5 w-8 h-8 rounded-lg bg-[#d97706]/8 dark:bg-[#d97706]/15 flex items-center justify-center shrink-0">
-                                      <CheckSquare className="w-3.5 h-3.5 text-[#d97706]/70 dark:text-[#fbbf24]/70" />
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                      <div className="flex items-center gap-2 mb-1.5">
-                                        <p className="text-sm font-medium line-clamp-1">{decryptedTitle}</p>
-                                        {isEncryptedSession && <ShieldCheck className="w-3 h-3 text-[#059669]/50 shrink-0" />}
-                                      </div>
-                                      <div className="flex items-center gap-3">
-                                        <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
-                                          <motion.div
-                                            className="h-full rounded-full bg-gradient-to-r from-[#d97706] to-[#f59e0b]"
-                                            initial={{ width: 0 }}
-                                            animate={{ width: `${progress}%` }}
-                                            transition={{ duration: 0.6, delay: index * 0.06 }}
-                                          />
-                                        </div>
-                                        <span className="text-[10px] font-medium text-muted-foreground tabular-nums">{completed}/{total}</span>
-                                        <span className="text-[10px] font-semibold text-[#d97706] dark:text-[#fbbf24] tabular-nums">{Math.round(progress)}%</span>
-                                      </div>
-                                    </div>
-                                    <div className="flex items-center gap-1.5 shrink-0 text-muted-foreground/50">
-                                      <Clock className="w-3 h-3" />
-                                      <span className="text-[10px]">{formatDistanceToNow(new Date(todo.updatedAt), { addSuffix: true })}</span>
-                                    </div>
-                                  </div>
-                                </button>
-                              </motion.div>
-                            )
-                          })}
-                        </AnimatePresence>
-                      </div>
-                    )}
-                  </section>
+                <DashboardRecentItems
+                  totalNotes={totalNotes}
+                  totalTodos={totalTodos}
+                  recentNotes={recentNotes}
+                  recentTodos={recentTodos}
+                  decryptedNotes={decryptedNotes}
+                  decryptedTodos={decryptedTodos}
+                  setView={setView}
+                  selectNote={selectNote}
+                  selectTodo={selectTodo}
+                  isEncryptedSession={isEncryptedSession}
+                />
                 </div>
               </>
             )}

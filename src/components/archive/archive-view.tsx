@@ -3,8 +3,8 @@
 import { useEffect, useState, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import { useAppStore, type NoteItem, type TodoItemData } from '@/stores/app-store'
-import { decryptNoteTitle } from '@/lib/encrypted-api'
-import { decryptTodoTitle } from '@/lib/encrypted-api'
+import { decryptNoteTitle, decryptTodoTitle } from '@/lib/encrypted-api'
+import { supabase } from '@/lib/supabase'
 import { AppSidebar } from '@/components/shared/app-sidebar'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -46,7 +46,7 @@ const stagger = {
 
 const fadeUp = {
   hidden: { opacity: 0, y: 16 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.22, 1, 0.36, 1] } },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] } },
 }
 
 export function ArchiveView() {
@@ -81,11 +81,57 @@ export function ArchiveView() {
     setIsLoading(true)
     try {
       const [notesRes, todosRes] = await Promise.all([
-        fetch(`/api/notes?userId=${currentUser.id}&archived=true`),
-        fetch(`/api/todos?userId=${currentUser.id}&archived=true`),
+        supabase
+          .from('notes')
+          .select('*')
+          .eq('author_id', currentUser.id)
+          .eq('is_archived', true),
+        supabase
+          .from('todo_lists')
+          .select('*, todo_items(*)')
+          .eq('author_id', currentUser.id)
+          .eq('is_archived', true)
       ])
-      if (notesRes.ok) setArchivedNotes(await notesRes.json())
-      if (todosRes.ok) setArchivedTodos(await todosRes.json())
+
+      if (notesRes.error || todosRes.error) {
+        toast.error('Failed to load archived items')
+        return
+      }
+
+      const formattedNotes = (notesRes.data || []).map((n: any) => ({
+        id: n.id,
+        title: n.title,
+        content: n.content,
+        workspaceId: n.workspace_id,
+        authorId: n.author_id,
+        isPinned: n.is_pinned,
+        isArchived: n.is_archived,
+        createdAt: n.created_at,
+        updatedAt: n.updated_at,
+      }))
+
+      const formattedTodos = (todosRes.data || []).map((t: any) => ({
+        id: t.id,
+        title: t.title,
+        content: '',
+        workspaceId: t.workspace_id,
+        authorId: t.author_id,
+        isPinned: t.is_pinned,
+        isArchived: t.is_archived,
+        createdAt: t.created_at,
+        updatedAt: t.updated_at,
+        items: (t.todo_items || []).map((i: any) => ({
+          id: i.id,
+          title: i.title,
+          completed: i.completed,
+          order: i.order,
+          todoListId: i.todo_list_id,
+          completedAt: i.completed_at,
+        })).sort((a: any, b: any) => a.order - b.order),
+      }))
+
+      setArchivedNotes(formattedNotes)
+      setArchivedTodos(formattedTodos)
     } catch {
       toast.error('Failed to load archived items')
     } finally {
@@ -126,11 +172,53 @@ export function ArchiveView() {
     if (!currentUser) return
     try {
       const [notesRes, todosRes] = await Promise.all([
-        fetch(`/api/notes?userId=${currentUser.id}`),
-        fetch(`/api/todos?userId=${currentUser.id}`),
+        supabase
+          .from('notes')
+          .select('*')
+          .eq('author_id', currentUser.id)
+          .eq('is_archived', false),
+        supabase
+          .from('todo_lists')
+          .select('*, todo_items(*)')
+          .eq('author_id', currentUser.id)
+          .eq('is_archived', false)
       ])
-      if (notesRes.ok) setNotes(await notesRes.json())
-      if (todosRes.ok) setTodoLists(await todosRes.json())
+
+      if (notesRes.data) {
+        setNotes(notesRes.data.map((n: any) => ({
+          id: n.id,
+          title: n.title,
+          content: n.content,
+          workspaceId: n.workspace_id,
+          authorId: n.author_id,
+          isPinned: n.is_pinned,
+          isArchived: n.is_archived,
+          createdAt: n.created_at,
+          updatedAt: n.updated_at,
+        })))
+      }
+
+      if (todosRes.data) {
+        setTodoLists(todosRes.data.map((t: any) => ({
+          id: t.id,
+          title: t.title,
+          content: '',
+          workspaceId: t.workspace_id,
+          authorId: t.author_id,
+          isPinned: t.is_pinned,
+          isArchived: t.is_archived,
+          createdAt: t.created_at,
+          updatedAt: t.updated_at,
+          items: (t.todo_items || []).map((i: any) => ({
+            id: i.id,
+            title: i.title,
+            completed: i.completed,
+            order: i.order,
+            todoListId: i.todo_list_id,
+            completedAt: i.completed_at,
+          })).sort((a: any, b: any) => a.order - b.order),
+        })))
+      }
     } catch {
       // silent
     }
@@ -138,12 +226,12 @@ export function ArchiveView() {
 
   const handleRestoreNote = async (noteId: string) => {
     try {
-      const res = await fetch(`/api/notes/${noteId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ isArchived: false }),
-      })
-      if (res.ok) {
+      const { error } = await supabase
+        .from('notes')
+        .update({ is_archived: false })
+        .eq('id', noteId)
+
+      if (!error) {
         setArchivedNotes((prev) => prev.filter((n) => n.id !== noteId))
         await refreshActiveData()
         toast.success('Note restored')
@@ -157,12 +245,12 @@ export function ArchiveView() {
 
   const handleRestoreTodo = async (todoId: string) => {
     try {
-      const res = await fetch(`/api/todos/${todoId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ isArchived: false }),
-      })
-      if (res.ok) {
+      const { error } = await supabase
+        .from('todo_lists')
+        .update({ is_archived: false })
+        .eq('id', todoId)
+
+      if (!error) {
         setArchivedTodos((prev) => prev.filter((t) => t.id !== todoId))
         await refreshActiveData()
         toast.success('Todo list restored')
@@ -178,11 +266,12 @@ export function ArchiveView() {
     if (!deleteTarget) return
     setIsDeleting(true)
     try {
-      const endpoint = deleteTarget.type === 'note'
-        ? `/api/notes/${deleteTarget.id}`
-        : `/api/todos/${deleteTarget.id}`
-      const res = await fetch(endpoint, { method: 'DELETE' })
-      if (res.ok) {
+      const { error } = await supabase
+        .from(deleteTarget.type === 'note' ? 'notes' : 'todo_lists')
+        .delete()
+        .eq('id', deleteTarget.id)
+
+      if (!error) {
         if (deleteTarget.type === 'note') {
           setArchivedNotes((prev) => prev.filter((n) => n.id !== deleteTarget.id))
           removeNote(deleteTarget.id)
