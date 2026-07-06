@@ -25,11 +25,11 @@ create policy "Allow users to update their own profile" on public.profiles for u
 
 -- Secure RPC for searching users by email without exposing sensitive data
 create or replace function public.get_profile_by_email(search_email text)
-returns table (id uuid, name text, email text, image text)
+returns table (id uuid, name text, email text, image text, public_rsa_key text)
 security definer
 as $$
 begin
-  return query select p.id, p.name, p.email, p.image from public.profiles p where p.email = search_email limit 1;
+  return query select p.id, p.name, p.email, p.image, p.public_rsa_key from public.profiles p where p.email = search_email limit 1;
 end;
 $$ language plpgsql;
 

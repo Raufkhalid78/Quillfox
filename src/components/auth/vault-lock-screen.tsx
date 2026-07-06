@@ -72,6 +72,14 @@ export function VaultLockScreen() {
       const key = await unwrapEncryptionKey(wrappedKeyStr, wrappedIvStr, passcode, saltArray)
       
       setEncryptionKey(key, encryptionSalt)
+
+      // Get user metadata for PKI
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user?.user_metadata?.encrypted_private_rsa_key) {
+        const { loadWorkspaceKeys } = await import('@/lib/e2ee')
+        const wsKeys = await loadWorkspaceKeys(key, user.user_metadata.encrypted_private_rsa_key, currentUser.id)
+        useAppStore.getState().setWorkspaceKeys(wsKeys)
+      }
       unlockVault()
       setPasscode('')
       setFailedAttempts(0)
@@ -157,6 +165,12 @@ export function VaultLockScreen() {
         const { ciphertext, iv } = wrappedMasterKeyObj
         const masterKey = await unwrapEncryptionKey(ciphertext, iv, password, saltArray)
         setEncryptionKey(masterKey, encryptionSalt)
+
+        if (data.user.user_metadata?.encrypted_private_rsa_key) {
+          const { loadWorkspaceKeys } = await import('@/lib/e2ee')
+          const wsKeys = await loadWorkspaceKeys(masterKey, data.user.user_metadata.encrypted_private_rsa_key, currentUser.id)
+          useAppStore.getState().setWorkspaceKeys(wsKeys)
+        }
       } else {
         const key = await deriveKey(password, saltArray)
         setEncryptionKey(key, encryptionSalt)

@@ -224,8 +224,8 @@ export function Dashboard() {
         notes.map(async (n) => {
           const existing = noteMap.get(n.id)
           if (existing && existing.updatedAt === n.updatedAt) return
-          const title = await decryptNoteTitle(n.title)
-          const decryptedContent = await decryptNoteContent(n.content)
+          const title = await decryptNoteTitle(n.title, n.workspaceId)
+          const decryptedContent = await decryptNoteContent(n.content, n.workspaceId)
           const preview = decryptedContent.substring(0, 120)
           noteMap.set(n.id, { title, preview: preview || 'Empty note...', updatedAt: n.updatedAt })
           notesChanged = true
@@ -235,7 +235,7 @@ export function Dashboard() {
         todoLists.map(async (t) => {
           const existing = todoMap.get(t.id)
           if (existing && existing.updatedAt === t.updatedAt) return
-          const title = await decryptTodoTitle(t.title)
+          const title = await decryptTodoTitle(t.title, t.workspaceId)
           todoMap.set(t.id, { title, updatedAt: t.updatedAt })
           todosChanged = true
         })
@@ -405,6 +405,28 @@ export function Dashboard() {
         return
       }
 
+      let encryptedWorkspaceKey = null
+      
+      const isEncryptedSession = useAppStore.getState().isEncryptedSession
+      if (isEncryptedSession) {
+        if (!profile.public_rsa_key) {
+          toast.error("User's encryption keys are missing. They may need to sign in again.")
+          setIsInviting(false)
+          return
+        }
+        
+        const wsKey = useAppStore.getState().workspaceKeys[selectedWs.id]
+        if (!wsKey) {
+          toast.error("Workspace key not found.")
+          setIsInviting(false)
+          return
+        }
+
+        const { exportKeyToString, encryptWithPublicKey } = await import('@/lib/e2ee')
+        const rawKeyStr = await exportKeyToString(wsKey)
+        encryptedWorkspaceKey = await encryptWithPublicKey(rawKeyStr, profile.public_rsa_key)
+      }
+
       const memberId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2)
       const { data: newMember, error: insertErr } = await supabase
         .from('workspace_members')
@@ -413,6 +435,7 @@ export function Dashboard() {
           workspace_id: selectedWs.id,
           user_id: profile.id,
           role: 'member',
+          encrypted_workspace_key: encryptedWorkspaceKey
         })
         .select()
         .single()

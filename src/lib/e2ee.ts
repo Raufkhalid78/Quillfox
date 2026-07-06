@@ -221,3 +221,96 @@ export async function unwrapEncryptionKey(
     ['encrypt', 'decrypt']
   )
 }
+
+// ==========================================
+// ASYMMETRIC ENCRYPTION (RSA-OAEP 2048)
+// ==========================================
+import forge from 'node-forge'
+
+export async function generateRSAKeyPair(): Promise<{ publicKey: string, privateKey: string }> {
+  return new Promise((resolve, reject) => {
+    forge.pki.rsa.generateKeyPair({ bits: 2048, workers: -1 }, (err, keypair) => {
+      if (err) return reject(err);
+      resolve({
+        publicKey: forge.pki.publicKeyToPem(keypair.publicKey),
+        privateKey: forge.pki.privateKeyToPem(keypair.privateKey)
+      });
+    });
+  });
+}
+
+// Encrypts a raw AES Master Key (exported as string) using RSA Public Key
+export async function encryptWithPublicKey(plaintext: string, publicKeyPem: string): Promise<string> {
+  const publicKey = forge.pki.publicKeyFromPem(publicKeyPem);
+  // @ts-ignore
+  const encrypted = publicKey.encrypt(plaintext, 'RSA-OAEP');
+  return forge.util.encode64(encrypted);
+}
+
+// Decrypts the raw AES Master Key using RSA Private Key
+export async function decryptWithPrivateKey(ciphertextB64: string, privateKeyPem: string): Promise<string> {
+  const privateKey = forge.pki.privateKeyFromPem(privateKeyPem);
+  const encrypted = forge.util.decode64(ciphertextB64);
+  // @ts-ignore
+  const decrypted = privateKey.decrypt(encrypted, 'RSA-OAEP');
+  return decrypted;
+}
+
+// Export CryptoKey to binary string for RSA encryption
+export async function exportKeyToString(key: CryptoKey): Promise<string> {
+  const exported = await crypto.subtle.exportKey('raw', key);
+  const bytes = new Uint8Array(exported);
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return binary;
+}
+
+// Import binary string back to CryptoKey
+export async function importKeyFromString(binaryString: string): Promise<CryptoKey> {
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return await crypto.subtle.importKey(
+    'raw',
+    bytes,
+    { name: 'AES-GCM' },
+    true,
+    ['encrypt', 'decrypt']
+  );
+}
+
+// Load and decrypt all workspace keys for a user
+export async function loadWorkspaceKeys(mek: CryptoKey, encryptedPrivateKey: string, userId: string): Promise<Record<string, CryptoKey>> {
+  const { decrypt } = await import('./e2ee');
+  const { supabase } = await import('./supabase');
+  
+  // 1. Decrypt Private RSA Key using MEK
+  const privateKeyPem = await decrypt(encryptedPrivateKey, mek);
+  
+  // 2. Fetch all workspace memberships with an encrypted_workspace_key
+  const { data: members } = await supabase
+    .from('workspace_members')
+    .select('workspace_id, encrypted_workspace_key')
+    .eq('user_id', userId)
+    .not('encrypted_workspace_key', 'is', null);
+
+  if (!members) return {};
+
+  const workspaceKeys: Record<string, CryptoKey> = {};
+
+  // 3. Decrypt each workspace key using the Private RSA Key
+  for (const member of members) {
+    try {
+      const rawKeyStr = await decryptWithPrivateKey(member.encrypted_workspace_key, privateKeyPem);
+      const wsKey = await importKeyFromString(rawKeyStr);
+      workspaceKeys[member.workspace_id] = wsKey;
+    } catch (e) {
+      console.error(`Failed to decrypt workspace key for ${member.workspace_id}`, e);
+    }
+  }
+
+  return workspaceKeys;
+}

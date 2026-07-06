@@ -87,8 +87,9 @@ interface AppState {
   workspaces: WorkspaceData[]
   // E2E Encryption (CryptoKey NOT persisted, excluded via partialize)
   encryptionKey: CryptoKey | null
-  encryptionSalt: string | null
+  encryptionSalt: Uint8Array | null
   isEncryptedSession: boolean
+  workspaceKeys: Record<string, CryptoKey>
 
   // Pro Tier and Auto-Lock Security State
   userTier: 'free' | 'premium' | 'ultra'
@@ -102,7 +103,8 @@ interface AppState {
   setView: (view: AppView) => void
   login: (user: User) => void
   logout: () => void
-  setEncryptionKey: (key: CryptoKey, salt: string) => void
+  setEncryptionKey: (key: CryptoKey, salt: Uint8Array) => void
+  setWorkspaceKeys: (keys: Record<string, CryptoKey>) => void
   clearEncryption: () => void
   selectNote: (noteId: string | null) => void
   selectTodo: (todoListId: string | null) => void
@@ -149,6 +151,7 @@ export const useAppStore = create<AppState>()(
       encryptionKey: null,
       encryptionSalt: null,
       isEncryptedSession: false,
+      workspaceKeys: {},
 
       // Pro Tier and Auto-Lock initial state
       userTier: 'free',
@@ -181,6 +184,7 @@ export const useAppStore = create<AppState>()(
           encryptionKey: null,
           encryptionSalt: null,
           isEncryptedSession: false,
+          workspaceKeys: {},
           isVaultLocked: false,
         })
       },
@@ -188,8 +192,11 @@ export const useAppStore = create<AppState>()(
       setEncryptionKey: (key, salt) =>
         set({ encryptionKey: key, encryptionSalt: salt, isEncryptedSession: true }),
 
+      setWorkspaceKeys: (keys) =>
+        set({ workspaceKeys: keys }),
+
       clearEncryption: () =>
-        set({ encryptionKey: null, encryptionSalt: null, isEncryptedSession: false }),
+        set({ encryptionKey: null, encryptionSalt: null, isEncryptedSession: false, workspaceKeys: {} }),
 
       selectNote: (noteId) =>
         set({

@@ -103,8 +103,8 @@ export function NotesList() {
           const existing = noteMap.get(n.id)
           if (existing && existing.updatedAt === n.updatedAt) return
 
-          const title = await decryptNoteTitle(n.title)
-          const decryptedContent = await decryptNoteContent(n.content)
+          const title = await decryptNoteTitle(n.title, n.workspaceId)
+          const decryptedContent = await decryptNoteContent(n.content, n.workspaceId)
           const preview = decryptedContent.substring(0, 120)
           noteMap.set(n.id, { title, preview: preview || 'Empty note...', updatedAt: n.updatedAt })
           changed = true

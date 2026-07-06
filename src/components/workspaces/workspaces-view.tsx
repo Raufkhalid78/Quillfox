@@ -129,8 +129,8 @@ export function WorkspacesView() {
         
         return {
           id: ws.id,
-          title: await decryptWorkspaceTitle(ws.title),
-          description: await decryptWorkspaceDescription(ws.description),
+          title: await decryptWorkspaceTitle(ws.title, ws.id),
+          description: await decryptWorkspaceDescription(ws.description, ws.id),
           color: ws.color,
           icon: ws.icon,
           ownerId: ws.owner_id,
@@ -179,8 +179,28 @@ export function WorkspacesView() {
     const title = newTitle.trim() || 'Untitled Workspace'
     const wsId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2)
     try {
-      const encryptedTitle = await encryptWorkspaceTitle(title)
-      const encryptedDesc = await encryptWorkspaceDescription(newDescription.trim() || null)
+      let encryptedWorkspaceKey = null;
+
+      const isEncryptedSession = useAppStore.getState().isEncryptedSession;
+      if (isEncryptedSession) {
+        // 1. Generate AES Master Key for Workspace
+        const { generateMasterKey, exportKeyToString, encryptWithPublicKey } = require('@/lib/e2ee');
+        const wsAesKey = await generateMasterKey();
+        
+        // Temporarily store in Zustand so `encryptWorkspaceTitle` can use it
+        const currentWsKeys = useAppStore.getState().workspaceKeys;
+        useAppStore.getState().setWorkspaceKeys({ ...currentWsKeys, [wsId]: wsAesKey });
+
+        // 2. Fetch User's Public RSA Key
+        const { data: profile } = await supabase.from('profiles').select('public_rsa_key').eq('id', currentUser.id).single();
+        if (profile?.public_rsa_key) {
+          const rawAesStr = await exportKeyToString(wsAesKey);
+          encryptedWorkspaceKey = await encryptWithPublicKey(rawAesStr, profile.public_rsa_key);
+        }
+      }
+
+      const encryptedTitle = await encryptWorkspaceTitle(title, wsId)
+      const encryptedDesc = await encryptWorkspaceDescription(newDescription.trim() || null, wsId)
 
       // 1. Insert workspace
       const { data: ws, error } = await supabase
@@ -209,6 +229,7 @@ export function WorkspacesView() {
           user_id: currentUser.id,
           workspace_id: wsId,
           role: 'owner',
+          encrypted_workspace_key: encryptedWorkspaceKey
         })
 
       const newWs: WorkspaceData = {
@@ -304,6 +325,28 @@ export function WorkspacesView() {
         return
       }
 
+      let encryptedWorkspaceKey = null
+      
+      const isEncryptedSession = useAppStore.getState().isEncryptedSession
+      if (isEncryptedSession) {
+        if (!profile.public_rsa_key) {
+          toast.error("User's encryption keys are missing. They may need to sign in again.")
+          setIsInviting(false)
+          return
+        }
+        
+        const wsKey = useAppStore.getState().workspaceKeys[selectedWs.id]
+        if (!wsKey) {
+          toast.error("Workspace key not found.")
+          setIsInviting(false)
+          return
+        }
+
+        const { exportKeyToString, encryptWithPublicKey } = await import('@/lib/e2ee')
+        const rawKeyStr = await exportKeyToString(wsKey)
+        encryptedWorkspaceKey = await encryptWithPublicKey(rawKeyStr, profile.public_rsa_key)
+      }
+
       const memberId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2)
       const { data: newMember, error: insertErr } = await supabase
         .from('workspace_members')
@@ -312,6 +355,7 @@ export function WorkspacesView() {
           workspace_id: selectedWs.id,
           user_id: profile.id,
           role: 'member',
+          encrypted_workspace_key: encryptedWorkspaceKey
         })
         .select()
         .single()
@@ -390,8 +434,8 @@ export function WorkspacesView() {
     try {
       const cleanTitle = editTitle.trim() || 'Untitled Workspace'
       const cleanDesc = editDescription.trim() || null
-      const encryptedTitle = await encryptWorkspaceTitle(cleanTitle)
-      const encryptedDesc = await encryptWorkspaceDescription(cleanDesc)
+      const encryptedTitle = await encryptWorkspaceTitle(cleanTitle, selectedWs.id)
+      const encryptedDesc = await encryptWorkspaceDescription(cleanDesc, selectedWs.id)
 
       const { data: updated, error } = await supabase
         .from('workspaces')
@@ -472,7 +516,7 @@ export function WorkspacesView() {
     const plainTitle = quickNoteTitle.trim() || 'Untitled Note'
     setIsQuickCreating(true)
     try {
-      const encryptedTitle = await encryptNoteTitle(plainTitle)
+      const encryptedTitle = await encryptNoteTitle(plainTitle, selectedWs.id)
       const noteId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2)
       
       const { data: note, error } = await supabase
@@ -533,7 +577,7 @@ export function WorkspacesView() {
     const plainTitle = quickTodoTitle.trim() || 'Untitled Todo List'
     setIsQuickCreating(true)
     try {
-      const encryptedTitle = await encryptTodoTitle(plainTitle)
+      const encryptedTitle = await encryptTodoTitle(plainTitle, selectedWs.id)
       const listId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2)
       
       const { data: todoList, error } = await supabase

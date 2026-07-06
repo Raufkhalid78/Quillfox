@@ -103,7 +103,7 @@ export function TodosList() {
       const todoMap = new Map<string, string>()
       await Promise.all(
         todoLists.map(async (t) => {
-          const title = await decryptTodoTitle(t.title)
+          const title = await decryptTodoTitle(t.title, t.workspaceId)
           todoMap.set(t.id, title)
         })
       )
@@ -139,7 +139,7 @@ export function TodosList() {
     const plainTitle = newTitle.trim() || 'Untitled Todo List'
     const todoListId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2)
     try {
-      const encryptedTitle = await encryptTodoTitle(plainTitle)
+      const encryptedTitle = await encryptTodoTitle(plainTitle, newWorkspace || null)
       const { data, error } = await supabase
         .from('todo_lists')
         .insert({

@@ -74,8 +74,8 @@ export function NoteEditor() {
           return
         }
 
-        const decryptedTitle = await decryptNoteTitle(data.title)
-        const decryptedContent = await decryptNoteContent(data.content || '')
+        const decryptedTitle = await decryptNoteTitle(data.title, data.workspace_id)
+        const decryptedContent = await decryptNoteContent(data.content || '', data.workspace_id)
         setTitle(decryptedTitle)
         setContent(decryptedContent)
         setInitialLoad(false)
@@ -102,8 +102,8 @@ export function NoteEditor() {
           // Only sync if the user is not actively typing and hasn't just saved
           if (!saveTimeoutRef.current && Date.now() - lastLocalSaveTimeRef.current > 2000) {
             try {
-              const decTitle = await decryptNoteTitle(payload.new.title)
-              const decContent = await decryptNoteContent(payload.new.content || '')
+              const decTitle = await decryptNoteTitle(payload.new.title, payload.new.workspace_id)
+              const decContent = await decryptNoteContent(payload.new.content || '', payload.new.workspace_id)
               setTitle((prev) => (prev === decTitle ? prev : decTitle))
               setContent((prev) => (prev === decContent ? prev : decContent))
             } catch (err) {
@@ -128,8 +128,9 @@ export function NoteEditor() {
       const currentContent = contentRef.current
       
       // Encrypt before sending to server
-      const encryptedTitle = await encryptNoteTitle(currentTitle)
-      const encryptedContent = await encryptNoteContent(currentContent)
+      const noteWsId = note?.workspaceId || note?.workspace_id;
+      const encryptedTitle = await encryptNoteTitle(currentTitle, noteWsId)
+      const encryptedContent = await encryptNoteContent(currentContent, noteWsId)
       const { error } = await supabase
         .from('notes')
         .update({

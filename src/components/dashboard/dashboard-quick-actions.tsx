@@ -179,8 +179,27 @@ export function DashboardQuickActions({
     const title = newWsTitle.trim() || 'Untitled Workspace'
     const wsId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2)
     try {
-      const encryptedTitle = await encryptWorkspaceTitle(title)
-      const encryptedDesc = newWsDescription.trim() ? await encryptWorkspaceDescription(newWsDescription.trim()) : null
+      let encryptedWorkspaceKey = null;
+
+      if (isEncryptedSession) {
+        // 1. Generate AES Master Key for Workspace
+        const { generateMasterKey, exportKeyToString, encryptWithPublicKey } = require('@/lib/e2ee');
+        const wsAesKey = await generateMasterKey();
+        
+        // Temporarily store in Zustand so `encryptWorkspaceTitle` can use it
+        const currentWsKeys = useAppStore.getState().workspaceKeys;
+        useAppStore.getState().setWorkspaceKeys({ ...currentWsKeys, [wsId]: wsAesKey });
+
+        // 2. Fetch User's Public RSA Key
+        const { data: profile } = await supabase.from('profiles').select('public_rsa_key').eq('id', currentUser.id).single();
+        if (profile?.public_rsa_key) {
+          const rawAesStr = await exportKeyToString(wsAesKey);
+          encryptedWorkspaceKey = await encryptWithPublicKey(rawAesStr, profile.public_rsa_key);
+        }
+      }
+
+      const encryptedTitle = await encryptWorkspaceTitle(title, wsId)
+      const encryptedDesc = newWsDescription.trim() ? await encryptWorkspaceDescription(newWsDescription.trim(), wsId) : null
 
       const { data, error } = await supabase
         .from('workspaces')
@@ -198,6 +217,16 @@ export function DashboardQuickActions({
         toast.error(error.message || 'Failed to create workspace')
         return
       }
+
+      // Automatically add owner to members list for RLS policies
+      await supabase.from('workspace_members').insert({
+        id: crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2),
+        user_id: currentUser.id,
+        workspace_id: data.id,
+        role: 'owner',
+        joined_at: new Date().toISOString(),
+        encrypted_workspace_key: encryptedWorkspaceKey
+      })
 
       const formatted = {
         id: data.id,

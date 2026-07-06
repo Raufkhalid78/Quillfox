@@ -4,20 +4,24 @@ import { useAppStore } from '@/stores/app-store'
 import { encrypt, decrypt, isEncrypted } from './e2ee'
 
 // Helper to get current encryption key from store
-function getKey(): CryptoKey | null {
-  return useAppStore.getState().encryptionKey
+function getKey(workspaceId?: string | null): CryptoKey | null {
+  const state = useAppStore.getState()
+  if (!state.isEncryptedSession) return null
+  
+  if (workspaceId && state.workspaceKeys) {
+    return state.workspaceKeys[workspaceId] || null
+  }
+  return state.encryptionKey
 }
 
-// Encrypt note content before saving
-export async function encryptNoteContent(content: string): Promise<string> {
-  const key = getKey()
+export async function encryptNoteContent(content: string, workspaceId?: string | null): Promise<string> {
+  const key = getKey(workspaceId)
   if (!key) return content
   return encrypt(content, key)
 }
 
-// Decrypt note content after loading
-export async function decryptNoteContent(content: string): Promise<string> {
-  const key = getKey()
+export async function decryptNoteContent(content: string, workspaceId?: string | null): Promise<string> {
+  const key = getKey(workspaceId)
   if (!key || !content) return content
   if (!isEncrypted(content)) return content
   try {
@@ -27,16 +31,14 @@ export async function decryptNoteContent(content: string): Promise<string> {
   }
 }
 
-// Encrypt note title before saving
-export async function encryptNoteTitle(title: string): Promise<string> {
-  const key = getKey()
+export async function encryptNoteTitle(title: string, workspaceId?: string | null): Promise<string> {
+  const key = getKey(workspaceId)
   if (!key) return title
   return encrypt(title, key)
 }
 
-// Decrypt note title after loading
-export async function decryptNoteTitle(title: string): Promise<string> {
-  const key = getKey()
+export async function decryptNoteTitle(title: string, workspaceId?: string | null): Promise<string> {
+  const key = getKey(workspaceId)
   if (!key || !title) return title
   if (!isEncrypted(title)) return title
   try {
@@ -46,15 +48,14 @@ export async function decryptNoteTitle(title: string): Promise<string> {
   }
 }
 
-// Same pattern for todo items
-export async function encryptTodoTitle(title: string): Promise<string> {
-  const key = getKey()
+export async function encryptTodoTitle(title: string, workspaceId?: string | null): Promise<string> {
+  const key = getKey(workspaceId)
   if (!key) return title
   return encrypt(title, key)
 }
 
-export async function decryptTodoTitle(title: string): Promise<string> {
-  const key = getKey()
+export async function decryptTodoTitle(title: string, workspaceId?: string | null): Promise<string> {
+  const key = getKey(workspaceId)
   if (!key || !title) return title
   if (!isEncrypted(title)) return title
   try {
@@ -64,14 +65,14 @@ export async function decryptTodoTitle(title: string): Promise<string> {
   }
 }
 
-export async function encryptWorkspaceTitle(title: string): Promise<string> {
-  const key = getKey()
+export async function encryptWorkspaceTitle(title: string, workspaceId?: string | null): Promise<string> {
+  const key = getKey(workspaceId)
   if (!key) return title
   return encrypt(title, key)
 }
 
-export async function decryptWorkspaceTitle(title: string): Promise<string> {
-  const key = getKey()
+export async function decryptWorkspaceTitle(title: string, workspaceId?: string | null): Promise<string> {
+  const key = getKey(workspaceId)
   if (!key || !title) return title
   if (!isEncrypted(title)) return title
   try {
@@ -81,15 +82,15 @@ export async function decryptWorkspaceTitle(title: string): Promise<string> {
   }
 }
 
-export async function encryptWorkspaceDescription(desc: string | null): Promise<string | null> {
+export async function encryptWorkspaceDescription(desc: string | null, workspaceId?: string | null): Promise<string | null> {
   if (!desc) return desc
-  const key = getKey()
+  const key = getKey(workspaceId)
   if (!key) return desc
   return encrypt(desc, key)
 }
 
-export async function decryptWorkspaceDescription(desc: string | null): Promise<string | null> {
-  const key = getKey()
+export async function decryptWorkspaceDescription(desc: string | null, workspaceId?: string | null): Promise<string | null> {
+  const key = getKey(workspaceId)
   if (!key || !desc) return desc
   if (!isEncrypted(desc)) return desc
   try {

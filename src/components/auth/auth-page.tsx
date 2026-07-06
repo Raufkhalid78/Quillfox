@@ -125,9 +125,14 @@ export function AuthPage() {
         try {
           const saltArray = Uint8Array.from(atob(salt), (c) => c.charCodeAt(0))
           const { ciphertext, iv } = wrappedMasterKeyObj
-          const { unwrapEncryptionKey } = await import('@/lib/e2ee')
+          const { unwrapEncryptionKey, loadWorkspaceKeys } = await import('@/lib/e2ee')
           const masterKey = await unwrapEncryptionKey(ciphertext, iv, loginPassword, saltArray)
           setEncryptionKey(masterKey, salt)
+
+          if (user.user_metadata?.encrypted_private_rsa_key) {
+             const wsKeys = await loadWorkspaceKeys(masterKey, user.user_metadata.encrypted_private_rsa_key, user.id)
+             useAppStore.getState().setWorkspaceKeys(wsKeys)
+          }
         } catch (e) {
           console.error(e)
           toast.error('Failed to setup encryption. Your data may not be decrypted.')
@@ -175,9 +180,15 @@ export function AuthPage() {
       const saltBase64 = btoa(saltBinary)
 
       // KEK/MEK Architecture: Generate MEK and wrap with KEK
-      const { generateMasterKey, wrapEncryptionKey } = await import('@/lib/e2ee')
+      const { generateMasterKey, wrapEncryptionKey, generateRSAKeyPair, deriveKey, encrypt } = await import('@/lib/e2ee')
       const masterKey = await generateMasterKey()
       const wrappedMasterKeyObj = await wrapEncryptionKey(masterKey, registerPassword, salt)
+
+      // Generate RSA Key Pair for the user
+      const { publicKey, privateKey } = await generateRSAKeyPair()
+      
+      // Encrypt the RSA Private Key using the MEK (Personal Master Key)
+      const encryptedPrivateKey = await encrypt(privateKey, masterKey)
 
       const { data, error } = await supabase.auth.signUp({
         email: registerEmail.trim(),
@@ -187,6 +198,8 @@ export function AuthPage() {
             name: registerName.trim(),
             salt: saltBase64,
             wrapped_master_key: wrappedMasterKeyObj, // store MEK wrapped by password
+            public_rsa_key: publicKey,
+            encrypted_private_rsa_key: encryptedPrivateKey,
           }
         }
       })

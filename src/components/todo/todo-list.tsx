@@ -69,13 +69,13 @@ export function TodoList() {
           return
         }
 
-        const decryptedTitle = await decryptTodoTitle(listData.title)
+        const decryptedTitle = await decryptTodoTitle(listData.title, listData.workspace_id)
         const decryptedItems = await Promise.all(
           (listData.todo_items || [])
             .sort((a: any, b: any) => a.order - b.order)
             .map(async (item: any) => ({
               id: item.id,
-              title: await decryptTodoTitle(item.title),
+              title: await decryptTodoTitle(item.title, listData.workspace_id),
               completed: item.completed,
               order: item.order,
               todoListId: item.todo_list_id,
@@ -147,7 +147,7 @@ export function TodoList() {
       const encryptedItems = await Promise.all(
         itemsToSave.map(async (item) => ({
           ...item,
-          title: await encryptTodoTitle(item.title),
+          title: await encryptTodoTitle(item.title, todoList?.workspaceId),
         }))
       )
 
@@ -217,7 +217,7 @@ export function TodoList() {
     const itemId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2)
     try {
       // Encrypt title before sending
-      const encryptedTitle = await encryptTodoTitle(newItemText.trim())
+      const encryptedTitle = await encryptTodoTitle(newItemText.trim(), todoList?.workspaceId)
       const { data: newItem, error } = await supabase
         .from('todo_items')
         .insert({
@@ -317,7 +317,7 @@ export function TodoList() {
       saveTimeoutRef.current = setTimeout(async () => {
         if (!selectedTodoListId) return
         try {
-          const encryptedTitle = await encryptTodoTitle(newTitle)
+          const encryptedTitle = await encryptTodoTitle(newTitle, todoList?.workspaceId)
           const { error } = await supabase
             .from('todo_lists')
             .update({ title: encryptedTitle })
