@@ -85,6 +85,16 @@ export function VaultLockScreen() {
         const { loadWorkspaceKeys } = await import('@/lib/e2ee')
         const wsKeys = await loadWorkspaceKeys(key, user.user_metadata.encrypted_private_rsa_key, currentUser.id)
         useAppStore.getState().setWorkspaceKeys(wsKeys)
+      } else {
+        const { generateRSAKeyPair, encrypt } = await import('@/lib/e2ee')
+        const keyPair = await generateRSAKeyPair()
+        const encryptedPrivateKey = await encrypt(keyPair.privateKey, key)
+        await supabase.auth.updateUser({
+          data: { encrypted_private_rsa_key: encryptedPrivateKey }
+        })
+        await supabase.from('profiles').update({
+          public_rsa_key: keyPair.publicKey
+        }).eq('id', currentUser.id)
       }
       unlockVault()
       setPasscode('')
@@ -180,6 +190,16 @@ export function VaultLockScreen() {
           const { loadWorkspaceKeys } = await import('@/lib/e2ee')
           const wsKeys = await loadWorkspaceKeys(masterKey, data.user.user_metadata.encrypted_private_rsa_key, currentUser.id)
           useAppStore.getState().setWorkspaceKeys(wsKeys)
+        } else {
+          const { generateRSAKeyPair, encrypt } = await import('@/lib/e2ee')
+          const keyPair = await generateRSAKeyPair()
+          const encryptedPrivateKey = await encrypt(keyPair.privateKey, masterKey)
+          await supabase.auth.updateUser({
+            data: { encrypted_private_rsa_key: encryptedPrivateKey }
+          })
+          await supabase.from('profiles').update({
+            public_rsa_key: keyPair.publicKey
+          }).eq('id', currentUser.id)
         }
       } else {
         const key = await deriveKey(password, saltArray)

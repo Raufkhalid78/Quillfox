@@ -232,8 +232,8 @@ export function DashboardQuickActions({
 
       const formatted = {
         id: data.id,
-        title: data.title,
-        description: data.description,
+        title: title,
+        description: newWsDescription.trim() || null,
         color: data.color,
         icon: data.icon,
         ownerId: data.owner_id,

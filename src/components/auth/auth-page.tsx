@@ -132,6 +132,18 @@ export function AuthPage() {
           if (user.user_metadata?.encrypted_private_rsa_key) {
              const wsKeys = await loadWorkspaceKeys(masterKey, user.user_metadata.encrypted_private_rsa_key, user.id)
              useAppStore.getState().setWorkspaceKeys(wsKeys)
+          } else {
+             // Generate RSA Keypair for legacy user who has MEK but no RSA keys
+             const { generateRSAKeyPair, encrypt } = await import('@/lib/e2ee')
+             const keyPair = await generateRSAKeyPair()
+             const encryptedPrivateKey = await encrypt(keyPair.privateKey, masterKey)
+             
+             await supabase.auth.updateUser({
+               data: { encrypted_private_rsa_key: encryptedPrivateKey }
+             })
+             await supabase.from('profiles').update({
+               public_rsa_key: keyPair.publicKey
+             }).eq('id', user.id)
           }
         } catch (e) {
           console.error(e)
