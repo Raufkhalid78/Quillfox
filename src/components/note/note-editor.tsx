@@ -128,7 +128,7 @@ export function NoteEditor() {
       const currentContent = contentRef.current
       
       // Encrypt before sending to server
-      const noteWsId = note?.workspaceId || note?.workspace_id;
+      const noteWsId = note?.workspaceId;
       const encryptedTitle = await encryptNoteTitle(currentTitle, noteWsId)
       const encryptedContent = await encryptNoteContent(currentContent, noteWsId)
       const { error } = await supabase

@@ -286,8 +286,7 @@ export function SettingsView() {
       if (encryptionKey && encryptionSalt) {
         toast.loading('Re-securing your vault with new password...', { id: 're-encrypt' })
         try {
-          const saltArray = base64ToUint8Array(encryptionSalt)
-          const newWrappedKey = await wrapEncryptionKey(encryptionKey, newPassword, saltArray)
+          const newWrappedKey = await wrapEncryptionKey(encryptionKey, newPassword, encryptionSalt)
           
           await supabase.auth.updateUser({
              data: { wrapped_master_key: newWrappedKey }
@@ -418,8 +417,7 @@ export function SettingsView() {
 
     setIsSavingPasscode(true)
     try {
-      const saltArray = base64ToUint8Array(encryptionSalt)
-      const { ciphertext, iv } = await wrapEncryptionKey(encryptionKey, passcodeVal, saltArray)
+      const { ciphertext, iv } = await wrapEncryptionKey(encryptionKey, passcodeVal, encryptionSalt)
       const hash = await hashPasscode(passcodeVal)
 
       const { error } = await supabase

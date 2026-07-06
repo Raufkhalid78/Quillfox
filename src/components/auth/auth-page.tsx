@@ -127,7 +127,7 @@ export function AuthPage() {
           const { ciphertext, iv } = wrappedMasterKeyObj
           const { unwrapEncryptionKey, loadWorkspaceKeys } = await import('@/lib/e2ee')
           const masterKey = await unwrapEncryptionKey(ciphertext, iv, loginPassword, saltArray)
-          setEncryptionKey(masterKey, salt)
+          setEncryptionKey(masterKey, saltArray)
 
           if (user.user_metadata?.encrypted_private_rsa_key) {
              const wsKeys = await loadWorkspaceKeys(masterKey, user.user_metadata.encrypted_private_rsa_key, user.id)
@@ -144,7 +144,7 @@ export function AuthPage() {
              const saltArray = Uint8Array.from(atob(salt), (c) => c.charCodeAt(0))
              const { deriveKey } = await import('@/lib/e2ee')
              const key = await deriveKey(loginPassword, saltArray)
-             setEncryptionKey(key, salt)
+             setEncryptionKey(key, saltArray)
            } catch {
              toast.error('Failed to setup encryption.')
            }
@@ -229,7 +229,7 @@ export function AuthPage() {
         createdAt: user.created_at
       })
 
-      setEncryptionKey(masterKey, saltBase64)
+      setEncryptionKey(masterKey, salt)
       toast.success('Account created successfully!')
     } catch {
       toast.error('Network error. Please try again.')

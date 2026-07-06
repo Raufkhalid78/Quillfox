@@ -9,6 +9,7 @@ import { supabase } from '@/lib/supabase'
 import { logActivity } from '@/lib/activity'
 import { encryptNoteTitle, encryptTodoTitle, encryptWorkspaceTitle, encryptWorkspaceDescription } from '@/lib/encrypted-api'
 import type { WorkspaceData, NoteItem, TodoItemData } from '@/stores/app-store'
+import { useAppStore } from '@/stores/app-store'
 
 interface DashboardQuickActionsProps {
   currentUser: { id: string } | null
@@ -179,8 +180,9 @@ export function DashboardQuickActions({
     const title = newWsTitle.trim() || 'Untitled Workspace'
     const wsId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2)
     try {
-      let encryptedWorkspaceKey = null;
+      let encryptedWorkspaceKey: string | null = null;
 
+      const isEncryptedSession = useAppStore.getState().isEncryptedSession
       if (isEncryptedSession) {
         // 1. Generate AES Master Key for Workspace
         const { generateMasterKey, exportKeyToString, encryptWithPublicKey } = require('@/lib/e2ee');

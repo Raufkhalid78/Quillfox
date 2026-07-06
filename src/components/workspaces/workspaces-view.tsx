@@ -325,7 +325,7 @@ export function WorkspacesView() {
         return
       }
 
-      let encryptedWorkspaceKey = null
+      let encryptedWorkspaceKey: string | null = null
       
       const isEncryptedSession = useAppStore.getState().isEncryptedSession
       if (isEncryptedSession) {

@@ -68,8 +68,7 @@ export function VaultLockScreen() {
         return
       }
 
-      const saltArray = base64ToUint8Array(encryptionSalt)
-      const key = await unwrapEncryptionKey(wrappedKeyStr, wrappedIvStr, passcode, saltArray)
+      const key = await unwrapEncryptionKey(wrappedKeyStr, wrappedIvStr, passcode, encryptionSalt)
       
       setEncryptionKey(key, encryptionSalt)
 
@@ -158,12 +157,11 @@ export function VaultLockScreen() {
         return
       }
 
-      const saltArray = base64ToUint8Array(encryptionSalt)
       const wrappedMasterKeyObj = data.user.user_metadata?.wrapped_master_key
 
       if (wrappedMasterKeyObj) {
         const { ciphertext, iv } = wrappedMasterKeyObj
-        const masterKey = await unwrapEncryptionKey(ciphertext, iv, password, saltArray)
+        const masterKey = await unwrapEncryptionKey(ciphertext, iv, password, encryptionSalt)
         setEncryptionKey(masterKey, encryptionSalt)
 
         if (data.user.user_metadata?.encrypted_private_rsa_key) {
@@ -172,7 +170,7 @@ export function VaultLockScreen() {
           useAppStore.getState().setWorkspaceKeys(wsKeys)
         }
       } else {
-        const key = await deriveKey(password, saltArray)
+        const key = await deriveKey(password, encryptionSalt)
         setEncryptionKey(key, encryptionSalt)
       }
       
