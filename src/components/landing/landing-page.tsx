@@ -97,9 +97,18 @@ function Particles() {
   )
 }
 
+import { useAppStore } from '@/stores/app-store'
+
 export function LandingPage() {
   const router = useRouter()
+  const currentUser = useAppStore(s => s.currentUser)
   const { scrollY } = useScroll()
+
+  useEffect(() => {
+    if (currentUser) {
+      router.push('/dashboard')
+    }
+  }, [currentUser, router])
   
   // Parallax effects
   const y1 = useTransform(scrollY, [0, 1000], [0, 200])

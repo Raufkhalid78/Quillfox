@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
-import { ArrowRightLeft, Lock, Loader2, Eye, EyeOff } from 'lucide-react'
+import { ArrowRightLeft, Lock, Loader2, Eye, EyeOff, LogOut } from 'lucide-react'
 
 export function VaultLockScreen() {
   const currentUser = useAppStore((s) => s.currentUser)
@@ -17,6 +17,7 @@ export function VaultLockScreen() {
   const unlockVault = useAppStore((s) => s.unlockVault)
   const setEncryptionKey = useAppStore((s) => s.setEncryptionKey)
   const encryptionSalt = useAppStore((s) => s.encryptionSalt)
+  const logout = useAppStore((s) => s.logout)
 
   const [unlockMethod, setUnlockMethod] = useState<'passcode' | 'password'>('passcode')
   const [passcode, setPasscode] = useState('')
@@ -319,6 +320,19 @@ export function VaultLockScreen() {
         >
           <ArrowRightLeft className="w-3.5 h-3.5 mr-1.5" />
           Unlock with {unlockMethod === 'passcode' ? 'Password' : 'Passcode'}
+        </Button>
+
+        <Button
+          variant="link"
+          size="sm"
+          onClick={() => {
+            logout()
+          }}
+          className="text-xs text-muted-foreground hover:text-destructive"
+          disabled={isLoading}
+        >
+          <LogOut className="w-3.5 h-3.5 mr-1.5" />
+          Log Out
         </Button>
       </div>
     </div>
