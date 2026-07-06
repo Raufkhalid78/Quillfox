@@ -19,7 +19,13 @@ export function VaultLockScreen() {
   const encryptionSalt = useAppStore((s) => s.encryptionSalt)
   const logout = useAppStore((s) => s.logout)
 
-  const [unlockMethod, setUnlockMethod] = useState<'passcode' | 'password'>('passcode')
+  const [unlockMethod, setUnlockMethod] = useState<'passcode' | 'password'>(() => {
+    if (typeof window !== 'undefined') {
+      const hasPasscode = sessionStorage.getItem('quillfox_wrapped_key')
+      return hasPasscode ? 'passcode' : 'password'
+    }
+    return 'passcode'
+  })
   const [passcode, setPasscode] = useState('')
   const [password, setPassword] = useState('')
   const [isLoading, setIsLoading] = useState(false)
@@ -145,6 +151,11 @@ export function VaultLockScreen() {
     e.preventDefault()
     if (!password || !currentUser || !encryptionSalt) return
     setIsLoading(true)
+
+    // Fix Zustand hydration corruption of Uint8Array
+    const saltArray = encryptionSalt instanceof Uint8Array 
+      ? encryptionSalt 
+      : Uint8Array.from(Object.values(encryptionSalt as any))
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
         email: currentUser.email,
@@ -162,8 +173,8 @@ export function VaultLockScreen() {
 
       if (wrappedMasterKeyObj) {
         const { ciphertext, iv } = wrappedMasterKeyObj
-        const masterKey = await unwrapEncryptionKey(ciphertext, iv, password, encryptionSalt)
-        setEncryptionKey(masterKey, encryptionSalt)
+        const masterKey = await unwrapEncryptionKey(ciphertext, iv, password, saltArray)
+        setEncryptionKey(masterKey, saltArray)
 
         if (data.user.user_metadata?.encrypted_private_rsa_key) {
           const { loadWorkspaceKeys } = await import('@/lib/e2ee')
@@ -171,8 +182,8 @@ export function VaultLockScreen() {
           useAppStore.getState().setWorkspaceKeys(wsKeys)
         }
       } else {
-        const key = await deriveKey(password, encryptionSalt)
-        setEncryptionKey(key, encryptionSalt)
+        const key = await deriveKey(password, saltArray)
+        setEncryptionKey(key, saltArray)
       }
       
       unlockVault()
