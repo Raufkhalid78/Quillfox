@@ -139,7 +139,7 @@ export function Dashboard() {
 
       if (profileData) {
         const t = profileData.tier;
-        useAppStore.getState().setTier(t === 'ultra_premium' ? 'ultra' : t === 'premium' ? 'premium' : 'free');
+        useAppStore.getState().setTier(t === 'ultra' || t === 'ultra_premium' ? 'ultra' : t === 'premium' ? 'premium' : 'free');
         useAppStore.getState().setActiveCollaborators(profileData.extra_collaborators || 0);
       }
 
