@@ -71,7 +71,7 @@ export function DashboardQuickActions({
     const plainTitle = newNoteTitle.trim() || 'Untitled Note'
     const noteId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2)
     try {
-      const encryptedTitle = await encryptNoteTitle(plainTitle)
+      const encryptedTitle = await encryptNoteTitle(plainTitle, newNoteWorkspace || null)
       const { data: note, error } = await supabase
         .from('notes')
         .insert({
@@ -130,7 +130,7 @@ export function DashboardQuickActions({
     const plainTitle = newTodoTitle.trim() || 'Untitled Todo List'
     const todoId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2)
     try {
-      const encryptedTitle = await encryptTodoTitle(plainTitle)
+      const encryptedTitle = await encryptTodoTitle(plainTitle, newTodoWorkspace || null)
       const { data, error } = await supabase
         .from('todo_lists')
         .insert({
@@ -185,7 +185,7 @@ export function DashboardQuickActions({
       const isEncryptedSession = useAppStore.getState().isEncryptedSession
       if (isEncryptedSession) {
         // 1. Generate AES Master Key for Workspace
-        const { generateMasterKey, exportKeyToString, encryptWithPublicKey } = require('@/lib/e2ee');
+        const { generateMasterKey, exportKeyToString, encryptWithPublicKey } = await import('@/lib/e2ee');
         const wsAesKey = await generateMasterKey();
         
         // Temporarily store in Zustand so `encryptWorkspaceTitle` can use it
