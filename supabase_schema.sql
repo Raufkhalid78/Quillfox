@@ -68,6 +68,7 @@ create table if not exists public.workspace_members (
   workspace_id text references public.workspaces on delete cascade not null,
   role text default 'member' not null,
   joined_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  encrypted_workspace_key text,
   unique (user_id, workspace_id)
 );
 
