@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAppStore, type WorkspaceData } from '@/stores/app-store'
-import { decryptNoteContent, decryptNoteTitle, decryptTodoTitle, encryptNoteTitle, encryptTodoTitle } from '@/lib/encrypted-api'
+import { decryptNoteContent, decryptNoteTitle, decryptTodoTitle, encryptNoteTitle, encryptTodoTitle, decryptWorkspaceTitle, decryptWorkspaceDescription } from '@/lib/encrypted-api'
 import { supabase } from '@/lib/supabase'
 import { logActivity } from '@/lib/activity'
 import { Button } from '@/components/ui/button'
@@ -192,14 +192,14 @@ export function Dashboard() {
         .map((m: any) => m.workspaces)
         .filter(Boolean)
       const allWs = [...(ownedWorkspaces || []), ...memberWorkspaces]
-      const formattedWorkspaces = allWs.map((ws: any) => {
+      const formattedWorkspaces = await Promise.all(allWs.map(async (ws: any) => {
         const activeNotesCount = (ws.notes || []).filter((n: any) => !n.is_archived).length
         const activeTodosCount = (ws.todo_lists || []).filter((t: any) => !t.is_archived).length
         
         return {
           id: ws.id,
-          title: ws.title,
-          description: ws.description,
+          title: await decryptWorkspaceTitle(ws.title, ws.id),
+          description: await decryptWorkspaceDescription(ws.description, ws.id),
           color: ws.color,
           icon: ws.icon,
           ownerId: ws.owner_id,
@@ -211,7 +211,7 @@ export function Dashboard() {
             members: (ws.workspace_members || []).length || 1,
           },
         }
-      })
+      }))
       formattedWorkspaces.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
       setWorkspacesAction(formattedWorkspaces)
 
