@@ -217,7 +217,10 @@ export function AuthPage() {
       })
 
       if (error) {
-        toast.error(error.message || 'Registration failed')
+        console.error("Signup error:", error)
+        let errMsg = error.message || 'Registration failed'
+        if (typeof errMsg === 'object' || errMsg === '{}') errMsg = JSON.stringify(error)
+        toast.error(errMsg)
         return
       }
 
