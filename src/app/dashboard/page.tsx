@@ -18,6 +18,7 @@ import { ArchiveView } from '@/components/archive/archive-view'
 import { MobileNav } from '@/components/shared/mobile-nav'
 import { useAppStore } from '@/stores/app-store'
 import { useVaultAutolock } from '@/hooks/use-vault-autolock'
+import { useGlobalRealtime } from '@/hooks/use-global-realtime'
 import { VaultLockScreen } from '@/components/auth/vault-lock-screen'
 import { supabase } from '@/lib/supabase'
 
@@ -59,6 +60,8 @@ function AppContent() {
 
   // Global vault auto-lock timer hook
   useVaultAutolock()
+  // Global realtime syncing hook
+  useGlobalRealtime()
 
   // Sync profile details on mount or login
   const currentUserId = currentUser?.id

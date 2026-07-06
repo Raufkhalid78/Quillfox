@@ -10,6 +10,9 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
+import { TodosList } from '@/components/todos/todos-list'
+import { WorkspacesView } from '@/components/workspaces/workspaces-view'
+import { MultiInviteDialog } from '@/components/workspaces/multi-invite-dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
@@ -106,14 +109,12 @@ export function Dashboard() {
       const { data: notesData, error: notesErr } = await supabase
         .from('notes')
         .select('*')
-        .eq('author_id', currentUser.id)
         .eq('is_archived', false)
 
       // 2. Fetch non-archived todo lists and their items
       const { data: todosData, error: todosErr } = await supabase
         .from('todo_lists')
         .select('*, todo_items(*)')
-        .eq('author_id', currentUser.id)
         .eq('is_archived', false)
 
       // 3. Fetch owned workspaces
@@ -129,6 +130,19 @@ export function Dashboard() {
         .eq('user_id', currentUser.id)
         .not('workspaces.owner_id', 'eq', currentUser.id)
 
+      // 5. Fetch user profile for tier and collabs
+      const { data: profileData } = await supabase
+        .from('profiles')
+        .select('tier, extra_collaborators')
+        .eq('id', currentUser.id)
+        .single()
+
+      if (profileData) {
+        const t = profileData.tier;
+        useAppStore.getState().setTier(t === 'ultra_premium' ? 'ultra' : t === 'premium' ? 'premium' : 'free');
+        useAppStore.getState().setActiveCollaborators(profileData.extra_collaborators || 0);
+      }
+
       if (notesErr || todosErr || ownedErr || memberErr) {
         toast.error('Failed to load data')
         return
@@ -139,6 +153,7 @@ export function Dashboard() {
         id: n.id,
         title: n.title,
         content: n.content,
+        tags: n.tags || [],
         workspaceId: n.workspace_id,
         authorId: n.author_id,
         isPinned: n.is_pinned,
@@ -207,7 +222,11 @@ export function Dashboard() {
     }
   }
 
-  useEffect(() => { fetchData() }, [currentUser, setNotes, setTodoListsAction, setWorkspacesAction])
+  const globalSyncTrigger = useAppStore((s) => s.globalSyncTrigger)
+
+  useEffect(() => {
+    fetchData()
+  }, [currentUser, globalSyncTrigger, setNotes, setTodoListsAction, setWorkspacesAction])
 
   useEffect(() => {
     const decryptData = async () => {
@@ -767,12 +786,11 @@ export function Dashboard() {
               {/* Invite */}
               <div className="space-y-2">
                 <Label className="text-xs font-medium">Invite Members</Label>
-                <div className="flex gap-2">
-                  <Input placeholder="Email address..." value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleInviteMember() } }} className="flex-1 h-9" />
-                  <Button size="sm" className="bg-gradient-to-r from-[#059669] to-[#0d9488] text-white h-9 rounded-lg" onClick={handleInviteMember} disabled={isInviting || !inviteEmail.trim()}>
-                    {isInviting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
+                <MultiInviteDialog>
+                  <Button size="sm" className="bg-gradient-to-r from-[#059669] to-[#0d9488] text-white h-9 rounded-lg w-full">
+                    Invite Members
                   </Button>
-                </div>
+                </MultiInviteDialog>
               </div>
               {/* Members */}
               {wsMembers.length > 0 && (

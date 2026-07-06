@@ -60,8 +60,8 @@ export function TodosList() {
       const { data, error } = await supabase
         .from('todo_lists')
         .select('*, todo_items(*)')
-        .eq('author_id', currentUser.id)
         .eq('is_archived', false)
+        .order('updated_at', { ascending: false })
 
       if (error) {
         toast.error('Failed to load todo lists')
@@ -96,7 +96,11 @@ export function TodosList() {
     }
   }
 
-  useEffect(() => { fetchData() }, [currentUser, setTodoLists])
+  const globalSyncTrigger = useAppStore((s) => s.globalSyncTrigger)
+
+  useEffect(() => {
+    fetchData()
+  }, [currentUser, globalSyncTrigger, setTodoLists])
 
   useEffect(() => {
     const decryptData = async () => {

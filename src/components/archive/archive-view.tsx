@@ -84,12 +84,10 @@ export function ArchiveView() {
         supabase
           .from('notes')
           .select('*')
-          .eq('author_id', currentUser.id)
           .eq('is_archived', true),
         supabase
           .from('todo_lists')
           .select('*, todo_items(*)')
-          .eq('author_id', currentUser.id)
           .eq('is_archived', true)
       ])
 
@@ -102,6 +100,7 @@ export function ArchiveView() {
         id: n.id,
         title: n.title,
         content: n.content,
+        tags: n.tags || [],
         workspaceId: n.workspace_id,
         authorId: n.author_id,
         isPinned: n.is_pinned,
@@ -163,9 +162,16 @@ export function ArchiveView() {
     if (!isLoading) decryptData()
   }, [archivedNotes, archivedTodos, isLoading])
 
+  const globalSyncTrigger = useAppStore((s) => s.globalSyncTrigger)
+
   useEffect(() => {
     if (!currentUser) setView('auth')
   }, [currentUser, setView])
+
+  useEffect(() => {
+    fetchArchivedData()
+    refreshActiveData()
+  }, [currentUser, globalSyncTrigger])
 
   // Also refresh active notes/todos list so restoring works correctly
   const refreshActiveData = useCallback(async () => {
@@ -175,12 +181,10 @@ export function ArchiveView() {
         supabase
           .from('notes')
           .select('*')
-          .eq('author_id', currentUser.id)
           .eq('is_archived', false),
         supabase
           .from('todo_lists')
           .select('*, todo_items(*)')
-          .eq('author_id', currentUser.id)
           .eq('is_archived', false)
       ])
 
@@ -189,6 +193,7 @@ export function ArchiveView() {
           id: n.id,
           title: n.title,
           content: n.content,
+          tags: n.tags || [],
           workspaceId: n.workspace_id,
           authorId: n.author_id,
           isPinned: n.is_pinned,

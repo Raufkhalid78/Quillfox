@@ -22,6 +22,7 @@ export interface NoteItem {
   id: string
   title: string
   content: string
+  tags?: string[]
   workspaceId: string | null
   authorId: string
   isPinned: boolean
@@ -95,9 +96,11 @@ interface AppState {
   userTier: 'free' | 'premium' | 'ultra'
   isVaultLocked: boolean
   vaultAutoLock: boolean
-  vaultLockTimeout: number
+  vaultLockTimeout: number // in milliseconds
   vaultPasscodeHash: string | null
   extraCollaborators: number
+  
+  globalSyncTrigger: number
 
   // Actions
   setView: (view: AppView) => void
@@ -157,9 +160,10 @@ export const useAppStore = create<AppState>()(
       userTier: 'free',
       isVaultLocked: false,
       vaultAutoLock: false,
-      vaultLockTimeout: 15,
+      vaultLockTimeout: 5 * 60 * 1000,
       vaultPasscodeHash: null,
       extraCollaborators: 0,
+      globalSyncTrigger: 0,
 
       // Actions
       setView: (view) => set({ currentView: view }),

@@ -62,8 +62,8 @@ export function NotesList() {
       const { data, error } = await supabase
         .from('notes')
         .select('*')
-        .eq('author_id', currentUser.id)
         .eq('is_archived', false)
+        .order('updated_at', { ascending: false })
 
       if (error) {
         toast.error('Failed to load notes')
@@ -74,6 +74,7 @@ export function NotesList() {
         id: n.id,
         title: n.title,
         content: n.content,
+        tags: n.tags || [],
         workspaceId: n.workspace_id,
         authorId: n.author_id,
         isPinned: n.is_pinned,
@@ -90,7 +91,11 @@ export function NotesList() {
     }
   }
 
-  useEffect(() => { fetchData() }, [currentUser, setNotes])
+  const globalSyncTrigger = useAppStore((s) => s.globalSyncTrigger)
+
+  useEffect(() => {
+    fetchData()
+  }, [currentUser, globalSyncTrigger, setNotes])
 
   useEffect(() => {
     const decryptData = async () => {

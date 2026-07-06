@@ -8,8 +8,10 @@ import { supabase } from '@/lib/supabase'
 import { logActivity } from '@/lib/activity'
 import { AppSidebar } from '@/components/shared/app-sidebar'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { MultiInviteDialog } from '@/components/workspaces/multi-invite-dialog'
+import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
@@ -155,7 +157,11 @@ export function WorkspacesView() {
     }
   }
 
-  useEffect(() => { fetchData() }, [currentUser, setWorkspacesAction])
+  const globalSyncTrigger = useAppStore((s) => s.globalSyncTrigger)
+
+  useEffect(() => {
+    fetchData()
+  }, [currentUser, globalSyncTrigger, setWorkspacesAction])
 
   useEffect(() => {
     if (!currentUser) setView('auth')
@@ -897,16 +903,11 @@ export function WorkspacesView() {
 
               {/* Invite */}
               <div className="flex gap-2">
-                <Input
-                  placeholder="Invite by email..."
-                  value={inviteEmail}
-                  onChange={(e) => setInviteEmail(e.target.value)}
-                  className="flex-1 h-9 text-xs"
-                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleInviteMember() } }}
-                />
-                <Button variant="outline" size="sm" className="h-9" onClick={handleInviteMember} disabled={isInviting}>
-                  {isInviting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UserPlus className="w-3.5 h-3.5" />}
-                </Button>
+                <MultiInviteDialog defaultWorkspaceId={selectedWs?.id}>
+                  <Button variant="outline" size="sm" className="h-9 w-full">
+                    <UserPlus className="w-3.5 h-3.5 mr-2" /> Invite Members
+                  </Button>
+                </MultiInviteDialog>
               </div>
             </div>
             {/* Delete Workspace */}
