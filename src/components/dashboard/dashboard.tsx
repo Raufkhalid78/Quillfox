@@ -573,7 +573,7 @@ export function Dashboard() {
   const overallProgress = totalItems > 0 ? Math.round((totalCompleted / totalItems) * 100) : 0
 
   return (
-    <div className="min-h-screen flex bg-background">
+    <div className="min-h-screen flex bg-gradient-mesh-dash-light dark:bg-gradient-mesh-dash-dark noise-overlay">
       <AppSidebar activeView="dashboard" onUpgradeClick={() => setView('pricing')} />
 
       {/* ── Main Content ── */}
@@ -630,7 +630,7 @@ export function Dashboard() {
                 { label: 'Progress', value: `${overallProgress}%`, icon: TrendingUp, accent: 'from-[#7c3aed] to-[#8b5cf6]', bgLight: 'bg-[#7c3aed]/5', bgDark: 'dark:bg-[#7c3aed]/10', textColor: 'text-[#7c3aed] dark:text-[#a78bfa]', isText: true },
               ].map((stat) => (
                 <motion.div key={stat.label} variants={fadeUp}>
-                  <div className="relative group rounded-2xl border border-border/50 p-4 md:p-5 bg-card/30 hover:bg-card/60 transition-all duration-300 hover:shadow-lg hover:shadow-black/5 hover:-translate-y-0.5">
+                  <div className="relative group rounded-2xl border border-border/50 p-4 md:p-5 glass-card card-lift inner-glow overflow-hidden">
                     <div className="flex items-start justify-between mb-3">
                       <div className={`p-2 rounded-xl ${stat.bgLight} ${stat.bgDark}`}>
                         <stat.icon className={`w-4 h-4 ${stat.textColor}`} />
@@ -672,7 +672,7 @@ export function Dashboard() {
                       whileHover={{ scale: 1.03 }}
                       whileTap={{ scale: 0.97 }}
                       onClick={() => handleOpenWsDetail(ws)}
-                      className="flex items-center gap-2 px-3 py-2 rounded-xl border border-border/50 bg-card/50 hover:bg-card/80 transition-colors group"
+                      className="flex items-center gap-2 px-3 py-2 rounded-xl glass-card card-lift inner-glow group"
                     >
                       <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: ws.color }} />
                       <span className="text-sm font-medium">{ws.title}</span>
@@ -733,7 +733,7 @@ export function Dashboard() {
                   { label: 'Todo Lists', value: selectedWs._count.todoLists },
                   { label: 'Total', value: selectedWs._count.notes + selectedWs._count.todoLists },
                 ].map((item) => (
-                  <div key={item.label} className="rounded-xl border border-border/40 p-3 text-center bg-card/30">
+                  <div key={item.label} className="rounded-xl glass-card p-3 text-center inner-glow">
                     <p className="text-xl font-bold bg-gradient-to-r from-[#059669] to-[#0d9488] bg-clip-text text-transparent">{item.value}</p>
                     <p className="text-[10px] text-muted-foreground mt-0.5">{item.label}</p>
                   </div>
@@ -749,7 +749,7 @@ export function Dashboard() {
                   <Plus className="w-3 h-3" /> Quick Add
                 </Label>
                 <div className="grid grid-cols-2 gap-2">
-                  <div className="rounded-lg border border-border/40 bg-card/30 p-2.5 space-y-2">
+                  <div className="rounded-lg glass-card p-2.5 space-y-2 inner-glow">
                     <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                       <FileText className="w-3 h-3 text-[#059669]" />
                       <span>New Note</span>
@@ -765,7 +765,7 @@ export function Dashboard() {
                       {isQuickCreating ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3 mr-0.5" />} Add
                     </Button>
                   </div>
-                  <div className="rounded-lg border border-border/40 bg-card/30 p-2.5 space-y-2">
+                  <div className="rounded-lg glass-card p-2.5 space-y-2 inner-glow">
                     <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                       <CheckSquare className="w-3 h-3 text-[#d97706]" />
                       <span>New Todo</span>

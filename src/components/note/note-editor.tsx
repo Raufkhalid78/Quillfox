@@ -399,7 +399,7 @@ export function NoteEditor() {
   }
 
   return (
-    <div className="min-h-screen flex bg-background">
+    <div className="min-h-screen flex bg-gradient-mesh-dash-light dark:bg-gradient-mesh-dash-dark noise-overlay">
       <AppSidebar activeView="note-editor" />
 
       <div className="flex-1 flex flex-col min-w-0">
@@ -487,7 +487,8 @@ export function NoteEditor() {
       </header>
 
       {/* Editor Area */}
-      <div className="flex-1 max-w-4xl mx-auto w-full px-4 py-6 bg-background">
+      <div className="flex-1 max-w-4xl mx-auto w-full px-4 py-6">
+        <div className="glass-card inner-glow rounded-3xl min-h-[calc(100vh-8rem)]">
         {initialLoad ? (
           <div className="flex items-center justify-center py-20">
             <Loader2 className="w-6 h-6 animate-spin text-[#059669]" />
@@ -519,6 +520,7 @@ export function NoteEditor() {
             />
           </div>
         )}
+        </div>
       </div>
 
       </div>

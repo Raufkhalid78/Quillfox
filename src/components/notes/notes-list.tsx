@@ -225,12 +225,12 @@ export function NotesList() {
   const paginationEnd = Math.min(page * PAGE_SIZE, filteredNotes.length)
 
   return (
-    <div className="min-h-screen flex bg-background">
+    <div className="min-h-screen flex bg-gradient-mesh-dash-light dark:bg-gradient-mesh-dash-dark noise-overlay">
       <AppSidebar activeView="notes" />
 
       <div className="flex-1 flex flex-col min-w-0">
         {/* Header */}
-        <header className="sticky top-0 z-40 flex items-center justify-between h-14 px-4 md:px-8 border-b border-border/40 bg-background/80 backdrop-blur-md">
+        <header className="sticky top-0 z-40 flex items-center justify-between h-14 px-4 md:px-8 glass-header">
           <div className="flex items-center gap-3 min-w-0">
             <div className="md:hidden w-8 h-8 rounded-lg bg-gradient-to-br from-[#059669] to-[#0d9488] text-white flex items-center justify-center shrink-0">
               <PenLine className="w-3.5 h-3.5" />
@@ -270,7 +270,7 @@ export function NotesList() {
             </Button>
             <Button
               size="sm"
-              className="gap-1.5 bg-gradient-to-r from-[#059669] to-[#0d9488] text-white hover:from-[#059669]/90 hover:to-[#0d9488]/90 rounded-lg text-xs h-8"
+              className="gap-1.5 btn-gradient btn-shine text-white rounded-lg text-xs h-8"
               onClick={() => setCreateOpen(true)}
             >
               <Plus className="w-3.5 h-3.5" />
@@ -299,7 +299,7 @@ export function NotesList() {
                 <h3 className="text-lg font-semibold mb-1">No notes yet</h3>
                 <p className="text-sm text-muted-foreground mb-4">Create your first note to get started</p>
                 <Button
-                  className="gap-2 bg-gradient-to-r from-[#059669] to-[#0d9488] text-white hover:from-[#059669]/90 hover:to-[#0d9488]/90 rounded-xl"
+                  className="gap-2 btn-gradient btn-shine text-white rounded-xl"
                   onClick={() => setCreateOpen(true)}
                 >
                   <Plus className="w-4 h-4" />
@@ -324,7 +324,7 @@ export function NotesList() {
                     <motion.div key={note.id} variants={fadeUp}>
                       <button
                         onClick={() => selectNote(note.id)}
-                        className="w-full text-left rounded-xl border border-border/40 bg-card/40 hover:bg-card/70 hover:border-border/70 transition-all duration-200 p-4 group"
+                        className="w-full text-left rounded-xl glass-card card-lift inner-glow p-4 group"
                       >
                         <div className="flex items-start gap-3">
                           <div className="mt-0.5 w-9 h-9 rounded-lg bg-[#059669]/8 dark:bg-[#059669]/15 flex items-center justify-center shrink-0">
@@ -450,7 +450,7 @@ export function NotesList() {
                 </Select>
               </div>
             )}
-            <Button className="w-full bg-gradient-to-r from-[#059669] to-[#0d9488] text-white rounded-lg" onClick={handleCreate} disabled={isCreating}>
+            <Button className="w-full btn-gradient btn-shine text-white rounded-lg" onClick={handleCreate} disabled={isCreating}>
               {isCreating ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
               {isCreating ? 'Creating...' : 'Create Note'}
             </Button>

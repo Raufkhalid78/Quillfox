@@ -216,12 +216,12 @@ export function TodosList() {
   const paginationEnd = Math.min(page * PAGE_SIZE, filteredTodos.length)
 
   return (
-    <div className="min-h-screen flex bg-background">
+    <div className="min-h-screen flex bg-gradient-mesh-dash-light dark:bg-gradient-mesh-dash-dark noise-overlay">
       <AppSidebar activeView="todos" />
 
       <div className="flex-1 flex flex-col min-w-0">
         {/* Header */}
-        <header className="sticky top-0 z-40 flex items-center justify-between h-14 px-4 md:px-8 border-b border-border/40 bg-background/80 backdrop-blur-md">
+        <header className="sticky top-0 z-40 flex items-center justify-between h-14 px-4 md:px-8 glass-header">
           <div className="flex items-center gap-3 min-w-0">
             <div className="md:hidden w-8 h-8 rounded-lg bg-gradient-to-br from-[#d97706] to-[#f59e0b] text-white flex items-center justify-center shrink-0">
               <CheckSquare className="w-3.5 h-3.5" />
@@ -261,7 +261,7 @@ export function TodosList() {
             </Button>
             <Button
               size="sm"
-              className="gap-1.5 bg-gradient-to-r from-[#d97706] to-[#f59e0b] text-white hover:from-[#d97706]/90 hover:to-[#f59e0b]/90 rounded-lg text-xs h-8"
+              className="gap-1.5 bg-gradient-to-r from-[#d97706] to-[#f59e0b] text-white hover:from-[#d97706]/90 hover:to-[#f59e0b]/90 rounded-lg text-xs h-8 btn-shine"
               onClick={() => setCreateOpen(true)}
             >
               <Plus className="w-3.5 h-3.5" />
@@ -290,7 +290,7 @@ export function TodosList() {
                 <h3 className="text-lg font-semibold mb-1">No todo lists yet</h3>
                 <p className="text-sm text-muted-foreground mb-4">Create your first list to start tracking tasks</p>
                 <Button
-                  className="gap-2 bg-gradient-to-r from-[#d97706] to-[#f59e0b] text-white hover:from-[#d97706]/90 hover:to-[#f59e0b]/90 rounded-xl"
+                  className="gap-2 bg-gradient-to-r from-[#d97706] to-[#f59e0b] text-white hover:from-[#d97706]/90 hover:to-[#f59e0b]/90 rounded-xl btn-shine"
                   onClick={() => setCreateOpen(true)}
                 >
                   <Plus className="w-4 h-4" />
@@ -318,7 +318,7 @@ export function TodosList() {
                     <motion.div key={todo.id} variants={fadeUp}>
                       <button
                         onClick={() => selectTodo(todo.id)}
-                        className="w-full text-left rounded-xl border border-border/40 bg-card/40 hover:bg-card/70 hover:border-border/70 transition-all duration-200 p-4 group"
+                        className="w-full text-left rounded-xl glass-card card-lift inner-glow p-4 group"
                       >
                         <div className="flex items-start gap-3">
                           <div className="mt-0.5 w-9 h-9 rounded-lg bg-[#d97706]/8 dark:bg-[#d97706]/15 flex items-center justify-center shrink-0">
@@ -454,7 +454,7 @@ export function TodosList() {
                 </Select>
               </div>
             )}
-            <Button className="w-full bg-gradient-to-r from-[#d97706] to-[#f59e0b] text-white rounded-lg" onClick={handleCreate} disabled={isCreating}>
+            <Button className="w-full bg-gradient-to-r from-[#d97706] to-[#f59e0b] text-white rounded-lg btn-shine" onClick={handleCreate} disabled={isCreating}>
               {isCreating ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
               {isCreating ? 'Creating...' : 'Create List'}
             </Button>

@@ -638,12 +638,12 @@ export function WorkspacesView() {
   if (!currentUser) return null
 
   return (
-    <div className="min-h-screen flex bg-background">
+    <div className="min-h-screen flex bg-gradient-mesh-dash-light dark:bg-gradient-mesh-dash-dark noise-overlay">
       <AppSidebar activeView="workspaces" />
 
       <div className="flex-1 flex flex-col min-w-0">
         {/* Header */}
-        <header className="sticky top-0 z-40 flex items-center justify-between h-14 px-4 md:px-8 border-b border-border/40 bg-background/80 backdrop-blur-md">
+        <header className="sticky top-0 z-40 flex items-center justify-between h-14 px-4 md:px-8 glass-header">
           <div className="flex items-center gap-3 min-w-0">
             <div className="md:hidden w-8 h-8 rounded-lg bg-gradient-to-br from-[#7c3aed] to-[#8b5cf6] text-white flex items-center justify-center shrink-0">
               <Layers className="w-3.5 h-3.5" />
@@ -673,7 +673,7 @@ export function WorkspacesView() {
             </Button>
             <Button
               size="sm"
-              className="gap-1.5 bg-gradient-to-r from-[#7c3aed] to-[#8b5cf6] text-white hover:from-[#7c3aed]/90 hover:to-[#8b5cf6]/90 rounded-lg text-xs h-8"
+              className="gap-1.5 btn-gradient btn-shine text-white rounded-lg text-xs h-8"
               onClick={() => setCreateOpen(true)}
             >
               <Plus className="w-3.5 h-3.5" />
@@ -702,7 +702,7 @@ export function WorkspacesView() {
                 <h3 className="text-lg font-semibold mb-1">No workspaces yet</h3>
                 <p className="text-sm text-muted-foreground mb-4">Create a workspace to organize your notes and tasks</p>
                 <Button
-                  className="gap-2 bg-gradient-to-r from-[#7c3aed] to-[#8b5cf6] text-white hover:from-[#7c3aed]/90 hover:to-[#8b5cf6]/90 rounded-xl"
+                  className="gap-2 btn-gradient btn-shine text-white rounded-xl"
                   onClick={() => setCreateOpen(true)}
                 >
                   <Plus className="w-4 h-4" />
@@ -717,7 +717,7 @@ export function WorkspacesView() {
                   return (
                     <motion.div key={ws.id} variants={fadeUp}>
                       <Card
-                        className="cursor-pointer hover:shadow-lg hover:shadow-black/5 hover:-translate-y-0.5 transition-all duration-300 group border-border/50"
+                        className="cursor-pointer glass-card card-lift inner-glow group"
                         onClick={() => handleOpenWsDetail(ws)}
                       >
                         <CardContent className="p-5">
@@ -793,7 +793,7 @@ export function WorkspacesView() {
                 />
               ))}
             </div>
-            <Button className="w-full bg-gradient-to-r from-[#7c3aed] to-[#8b5cf6] text-white rounded-lg" onClick={handleCreate} disabled={isCreating}>
+            <Button className="w-full btn-gradient btn-shine text-white rounded-lg" onClick={handleCreate} disabled={isCreating}>
               {isCreating ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
               {isCreating ? 'Creating...' : 'Create Workspace'}
             </Button>

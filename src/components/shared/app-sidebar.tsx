@@ -66,7 +66,7 @@ export function AppSidebar({ activeView, onUpgradeClick }: AppSidebarProps) {
   }
 
   return (
-    <aside className="hidden md:flex flex-col w-[72px] border-r border-border/60 bg-card/50 backdrop-blur-sm">
+    <aside className="hidden md:flex flex-col w-[72px] border-r border-border/60 glass-strong z-50">
       {/* Logo */}
       <div className="flex items-center justify-center h-16 border-b border-border/40">
         <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#059669] to-[#0d9488] text-white flex items-center justify-center shadow-lg shadow-[#059669]/20">
@@ -83,10 +83,10 @@ export function AppSidebar({ activeView, onUpgradeClick }: AppSidebarProps) {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className={`w-10 h-10 rounded-xl transition-colors ${
+                  className={`w-10 h-10 rounded-xl transition-all duration-300 ${
                     isActive(item.key)
-                      ? 'bg-primary/10 text-primary'
-                      : 'text-muted-foreground hover:text-foreground'
+                      ? 'bg-[#6d28d9]/15 dark:bg-[#a855f7]/20 text-[#6d28d9] dark:text-[#a855f7] glow-purple inner-glow'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-muted/50 card-lift'
                   }`}
                   onClick={() => handleClick(item.key)}
                 >
@@ -105,10 +105,10 @@ export function AppSidebar({ activeView, onUpgradeClick }: AppSidebarProps) {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className={`w-10 h-10 rounded-xl transition-colors ${
+                  className={`w-10 h-10 rounded-xl transition-all duration-300 ${
                     activeView === 'pricing'
-                      ? 'bg-[#d97706]/10 text-[#d97706]'
-                      : 'text-muted-foreground hover:text-foreground'
+                      ? 'bg-[#d97706]/15 text-[#d97706] glow-coral inner-glow'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-muted/50 card-lift'
                   }`}
                   onClick={handleUpgrade}
                 >
@@ -129,7 +129,7 @@ export function AppSidebar({ activeView, onUpgradeClick }: AppSidebarProps) {
               <Button
                 variant="ghost"
                 size="icon"
-                className="w-10 h-10 rounded-xl text-muted-foreground hover:text-foreground"
+                className="w-10 h-10 rounded-xl transition-all duration-300 text-muted-foreground hover:text-foreground hover:bg-muted/50 card-lift"
                 onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
               >
                 {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
@@ -145,7 +145,7 @@ export function AppSidebar({ activeView, onUpgradeClick }: AppSidebarProps) {
               <Button
                 variant="ghost"
                 size="icon"
-                className="w-10 h-10 rounded-xl text-muted-foreground hover:text-destructive"
+                className="w-10 h-10 rounded-xl transition-all duration-300 text-muted-foreground hover:text-destructive hover:bg-destructive/10 card-lift"
                 onClick={logout}
               >
                 <LogOut className="w-4 h-4" />
