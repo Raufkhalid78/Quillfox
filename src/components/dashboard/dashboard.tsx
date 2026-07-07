@@ -277,7 +277,7 @@ export function Dashboard() {
     const plainTitle = quickNoteTitle.trim() || 'Untitled Note'
     setIsQuickCreating(true)
     try {
-      const encryptedTitle = await encryptNoteTitle(plainTitle)
+      const encryptedTitle = await encryptNoteTitle(plainTitle, selectedWs)
       const noteId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2)
       
       const { data, error } = await supabase
@@ -322,7 +322,7 @@ export function Dashboard() {
     const plainTitle = quickTodoTitle.trim() || 'Untitled Todo List'
     setIsQuickCreating(true)
     try {
-      const encryptedTitle = await encryptTodoTitle(plainTitle)
+      const encryptedTitle = await encryptTodoTitle(plainTitle, selectedWs)
       const listId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2)
 
       const { data, error } = await supabase

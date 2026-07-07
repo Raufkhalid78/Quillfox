@@ -151,7 +151,7 @@ export function NotesList() {
     const plainTitle = newTitle.trim() || 'Untitled Note'
     const noteId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2)
     try {
-      const encryptedTitle = await encryptNoteTitle(plainTitle)
+      const encryptedTitle = await encryptNoteTitle(plainTitle, newWorkspace || null)
       const { data: note, error } = await supabase
         .from('notes')
         .insert({
