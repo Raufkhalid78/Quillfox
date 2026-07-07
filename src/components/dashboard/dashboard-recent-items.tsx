@@ -81,16 +81,16 @@ export function DashboardRecentItems({
                           <div className="mt-0.5 w-8 h-8 rounded-lg bg-[#059669]/8 dark:bg-[#059669]/15 flex items-center justify-center shrink-0">
                             <FileText className="w-3.5 h-3.5 text-[#059669]/70 dark:text-[#34d399]/70" />
                           </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-0.5">
+                          <div className="flex-1 min-w-0 flex flex-col gap-1">
+                            <div className="flex items-center gap-2">
                               <p className="text-sm font-medium line-clamp-1">{decrypted?.title || note.title}</p>
                               {isEncryptedSession && <ShieldCheck className="w-3 h-3 text-[#059669]/50 shrink-0" />}
                             </div>
                             <p className="text-xs text-muted-foreground line-clamp-1">{decrypted?.preview || 'Empty note...'}</p>
-                          </div>
-                          <div className="flex items-center gap-1.5 shrink-0 text-muted-foreground/50">
-                            <Clock className="w-3 h-3" />
-                            <span className="text-[10px]">{formatDistanceToNow(new Date(note.updatedAt), { addSuffix: true })}</span>
+                            <div className="flex items-center gap-1.5 shrink-0 text-muted-foreground/50 mt-1">
+                              <Clock className="w-3 h-3" />
+                              <span className="text-[10px]">{formatDistanceToNow(new Date(note.updatedAt), { addSuffix: true })}</span>
+                            </div>
                           </div>
                         </div>
                       </button>
@@ -148,12 +148,12 @@ export function DashboardRecentItems({
                           <div className="mt-0.5 w-8 h-8 rounded-lg bg-[#d97706]/8 dark:bg-[#d97706]/15 flex items-center justify-center shrink-0">
                             <ListTodo className="w-3.5 h-3.5 text-[#d97706]/70 dark:text-[#fbbf24]/70" />
                           </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1.5">
+                          <div className="flex-1 min-w-0 flex flex-col gap-1.5">
+                            <div className="flex items-center gap-2">
                               <p className="text-sm font-medium line-clamp-1">{decryptedTitle}</p>
-                              {isEncryptedSession && <ShieldCheck className="w-3 h-3 text-[#059669]/50 shrink-0" />}
+                              {isEncryptedSession && <ShieldCheck className="w-3 h-3 text-[#d97706]/50 shrink-0" />}
                             </div>
-                            <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-3 mt-0.5">
                               <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
                                 <motion.div
                                   className="h-full rounded-full bg-gradient-to-r from-[#d97706] to-[#f59e0b]"
@@ -162,13 +162,13 @@ export function DashboardRecentItems({
                                   transition={{ duration: 0.6, delay: index * 0.06 }}
                                 />
                               </div>
-                              <span className="text-[10px] font-medium text-muted-foreground tabular-nums">{completed}/{total}</span>
-                              <span className="text-[10px] font-semibold text-[#d97706] dark:text-[#fbbf24] tabular-nums">{Math.round(progress)}%</span>
+                              <span className="text-[10px] font-medium text-muted-foreground tabular-nums shrink-0">{completed}/{total}</span>
+                              <span className="text-[10px] font-semibold text-[#d97706] dark:text-[#fbbf24] tabular-nums shrink-0">{Math.round(progress)}%</span>
                             </div>
-                          </div>
-                          <div className="flex items-center gap-1.5 shrink-0 text-muted-foreground/50">
-                            <Clock className="w-3 h-3" />
-                            <span className="text-[10px]">{formatDistanceToNow(new Date(todo.updatedAt), { addSuffix: true })}</span>
+                            <div className="flex items-center gap-1.5 shrink-0 text-muted-foreground/50 mt-0.5">
+                              <Clock className="w-3 h-3" />
+                              <span className="text-[10px]">{formatDistanceToNow(new Date(todo.updatedAt), { addSuffix: true })}</span>
+                            </div>
                           </div>
                         </div>
                       </button>
