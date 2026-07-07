@@ -9,6 +9,8 @@ create table if not exists public.profiles (
   vault_lock_timeout integer default 15 not null,
   vault_passcode_hash text,
   encrypted_master_key text,
+  public_rsa_key text,
+  encrypted_private_rsa_key text,
   updated_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
