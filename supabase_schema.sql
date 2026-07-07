@@ -37,8 +37,22 @@ $$ language plpgsql;
 create or replace function public.handle_new_user()
 returns trigger as $$
 begin
-  insert into public.profiles (id, email, name)
-  values (new.id, new.email, coalesce(new.raw_user_meta_data->>'name', ''));
+  insert into public.profiles (
+    id, 
+    email, 
+    name,
+    encrypted_master_key,
+    public_rsa_key,
+    encrypted_private_rsa_key
+  )
+  values (
+    new.id, 
+    new.email, 
+    coalesce(new.raw_user_meta_data->>'name', ''),
+    new.raw_user_meta_data->>'encrypted_master_key',
+    new.raw_user_meta_data->>'public_rsa_key',
+    new.raw_user_meta_data->>'encrypted_private_rsa_key'
+  );
   return new;
 end;
 $$ language plpgsql security definer;
