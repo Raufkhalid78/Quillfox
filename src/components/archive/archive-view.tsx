@@ -168,11 +168,6 @@ export function ArchiveView() {
     if (!currentUser) setView('auth')
   }, [currentUser, setView])
 
-  useEffect(() => {
-    fetchArchivedData()
-    refreshActiveData()
-  }, [currentUser, globalSyncTrigger])
-
   // Also refresh active notes/todos list so restoring works correctly
   const refreshActiveData = useCallback(async () => {
     if (!currentUser) return
@@ -228,6 +223,11 @@ export function ArchiveView() {
       // silent
     }
   }, [currentUser, setNotes, setTodoLists])
+
+  useEffect(() => {
+    fetchArchivedData()
+    refreshActiveData()
+  }, [currentUser, globalSyncTrigger, refreshActiveData])
 
   const handleRestoreNote = async (noteId: string) => {
     try {

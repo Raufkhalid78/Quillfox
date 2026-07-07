@@ -91,9 +91,9 @@
   /* Light theme - cool slate with purple warmth */
   --background: var(--qf-slate-50);
   --foreground: var(--qf-slate-950);
-  --card: oklch(1 0 0);
+  --card: #ffffff;
   --card-foreground: var(--qf-slate-950);
-  --popover: oklch(1 0 0);
+  --popover: #ffffff;
   --popover-foreground: var(--qf-slate-950);
   --primary: #6d28d9;
   --primary-foreground: #faf5ff;
@@ -103,7 +103,7 @@
   --muted-foreground: var(--qf-slate-500);
   --accent: var(--qf-coral-500);
   --accent-foreground: #fff7ed;
-  --destructive: oklch(0.577 0.245 27.325);
+  --destructive: #ef4444;
   --border: var(--qf-slate-200);
   --input: var(--qf-slate-200);
   --ring: var(--qf-purple-400);
@@ -112,7 +112,7 @@
   --chart-3: #9333ea;
   --chart-4: #ea580c;
   --chart-5: #a855f7;
-  --sidebar: oklch(0.985 0.005 290);
+  --sidebar: #f8fafc;
   --sidebar-foreground: var(--qf-slate-950);
   --sidebar-primary: var(--qf-purple-700);
   --sidebar-primary-foreground: var(--qf-purple-50);
@@ -138,7 +138,7 @@
   --muted-foreground: var(--qf-slate-400);
   --accent: var(--qf-coral-400);
   --accent-foreground: var(--qf-coral-950);
-  --destructive: oklch(0.704 0.191 22.216);
+  --destructive: #7f1d1d;
   --border: rgba(148, 163, 184, 0.12);
   --input: rgba(148, 163, 184, 0.15);
   --ring: var(--qf-purple-500);
@@ -500,7 +500,8 @@
   background: linear-gradient(135deg, var(--qf-purple-600), var(--qf-coral-500));
 }
 
-.bg-gradient-mesh-light {
+.bg-gradient-mesh {
+  background-color: var(--background);
   background:
     radial-gradient(at 20% 20%, rgba(109, 40, 217, 0.08) 0%, transparent 50%),
     radial-gradient(at 80% 10%, rgba(249, 115, 22, 0.06) 0%, transparent 40%),
@@ -509,7 +510,7 @@
     var(--qf-slate-50);
 }
 
-.bg-gradient-mesh-dark {
+.dark .bg-gradient-mesh {
   background:
     radial-gradient(at 20% 20%, rgba(109, 40, 217, 0.15) 0%, transparent 50%),
     radial-gradient(at 80% 10%, rgba(249, 115, 22, 0.08) 0%, transparent 40%),
@@ -677,7 +678,8 @@
    ======================================== */
 
 /* Dashboard mesh background - more subtle than auth */
-.bg-gradient-mesh-dash-light {
+.bg-gradient-mesh-dash {
+  background-color: var(--background);
   background:
     radial-gradient(ellipse at 0% 0%, rgba(109, 40, 217, 0.06) 0%, transparent 60%),
     radial-gradient(ellipse at 100% 0%, rgba(249, 115, 22, 0.04) 0%, transparent 50%),
@@ -685,7 +687,7 @@
     var(--qf-slate-50);
 }
 
-.bg-gradient-mesh-dash-dark {
+.dark .bg-gradient-mesh-dash {
   background:
     radial-gradient(ellipse at 0% 0%, rgba(109, 40, 217, 0.12) 0%, transparent 60%),
     radial-gradient(ellipse at 100% 0%, rgba(249, 115, 22, 0.06) 0%, transparent 50%),

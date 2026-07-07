@@ -638,7 +638,7 @@ export function WorkspacesView() {
   if (!currentUser) return null
 
   return (
-    <div className="min-h-screen flex bg-gradient-mesh-dash-light dark:bg-gradient-mesh-dash-dark noise-overlay">
+    <div className="min-h-screen flex bg-gradient-mesh-dash noise-overlay">
       <AppSidebar activeView="workspaces" />
 
       <div className="flex-1 flex flex-col min-w-0">

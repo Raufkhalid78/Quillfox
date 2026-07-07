@@ -225,7 +225,7 @@ export function NotesList() {
   const paginationEnd = Math.min(page * PAGE_SIZE, filteredNotes.length)
 
   return (
-    <div className="min-h-screen flex bg-gradient-mesh-dash-light dark:bg-gradient-mesh-dash-dark noise-overlay">
+    <div className="min-h-screen flex bg-gradient-mesh-dash noise-overlay">
       <AppSidebar activeView="notes" />
 
       <div className="flex-1 flex flex-col min-w-0">

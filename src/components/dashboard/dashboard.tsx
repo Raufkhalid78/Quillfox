@@ -573,7 +573,7 @@ export function Dashboard() {
   const overallProgress = totalItems > 0 ? Math.round((totalCompleted / totalItems) * 100) : 0
 
   return (
-    <div className="min-h-screen flex bg-gradient-mesh-dash-light dark:bg-gradient-mesh-dash-dark noise-overlay">
+    <div className="min-h-screen flex bg-gradient-mesh-dash noise-overlay">
       <AppSidebar activeView="dashboard" onUpgradeClick={() => setView('pricing')} />
 
       {/* ── Main Content ── */}

@@ -306,7 +306,7 @@ export function AuthPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-mesh-light dark:bg-gradient-mesh-dark relative overflow-hidden noise-overlay">
+    <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-mesh relative overflow-hidden noise-overlay">
       {/* Animated Gradient Orbs */}
       <div className="gradient-orb gradient-orb-purple w-[400px] h-[400px] -top-20 -left-20 animate-float" />
       <div className="gradient-orb gradient-orb-coral w-[350px] h-[350px] -bottom-10 -right-10 animate-float-delayed" />
