@@ -71,6 +71,10 @@ export async function encrypt(
   for (let i = 0; i < combined.length; i += chunkSize) {
     const chunk = combined.subarray(i, i + chunkSize)
     binary += String.fromCharCode(...chunk)
+    // Yield to the event loop every 4 chunks (approx 128KB) to prevent UI freezing
+    if (i > 0 && i % (chunkSize * 4) === 0) {
+      await new Promise(resolve => setTimeout(resolve, 0))
+    }
   }
   return 'enc:' + btoa(binary)
 }
@@ -91,6 +95,10 @@ export async function decrypt(
     const chunk = binary.substring(i, i + chunkSize)
     for (let j = 0; j < chunk.length; j++) {
       combined[i + j] = chunk.charCodeAt(j)
+    }
+    // Yield to the event loop every 4 chunks (approx 128KB) to prevent UI freezing
+    if (i > 0 && i % (chunkSize * 4) === 0) {
+      await new Promise(resolve => setTimeout(resolve, 0))
     }
   }
   

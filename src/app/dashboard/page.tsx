@@ -5,17 +5,27 @@ import { Loader2 } from 'lucide-react'
 import { ThemeProvider } from 'next-themes'
 import { Toaster } from 'sonner'
 import { motion, AnimatePresence } from 'framer-motion'
-import { AuthPage } from '@/components/auth/auth-page'
-import { Dashboard } from '@/components/dashboard/dashboard'
-import { NoteEditor } from '@/components/note/note-editor'
-import { TodoList } from '@/components/todo/todo-list'
-import { NotesList } from '@/components/notes/notes-list'
-import { TodosList } from '@/components/todos/todos-list'
-import { WorkspacesView } from '@/components/workspaces/workspaces-view'
-import { SettingsView } from '@/components/settings/settings-view'
-import { PricingView } from '@/components/pricing/pricing-view'
-import { ArchiveView } from '@/components/archive/archive-view'
-import { MobileNav } from '@/components/shared/mobile-nav'
+import dynamic from 'next/dynamic'
+
+const AuthPage = dynamic(() => import('@/components/auth/auth-page').then(mod => mod.AuthPage), { ssr: false, loading: () => <LoadingView /> })
+const Dashboard = dynamic(() => import('@/components/dashboard/dashboard').then(mod => mod.Dashboard), { ssr: false, loading: () => <LoadingView /> })
+const NoteEditor = dynamic(() => import('@/components/note/note-editor').then(mod => mod.NoteEditor), { ssr: false, loading: () => <LoadingView /> })
+const TodoList = dynamic(() => import('@/components/todo/todo-list').then(mod => mod.TodoList), { ssr: false, loading: () => <LoadingView /> })
+const NotesList = dynamic(() => import('@/components/notes/notes-list').then(mod => mod.NotesList), { ssr: false, loading: () => <LoadingView /> })
+const TodosList = dynamic(() => import('@/components/todos/todos-list').then(mod => mod.TodosList), { ssr: false, loading: () => <LoadingView /> })
+const WorkspacesView = dynamic(() => import('@/components/workspaces/workspaces-view').then(mod => mod.WorkspacesView), { ssr: false, loading: () => <LoadingView /> })
+const SettingsView = dynamic(() => import('@/components/settings/settings-view').then(mod => mod.SettingsView), { ssr: false, loading: () => <LoadingView /> })
+const PricingView = dynamic(() => import('@/components/pricing/pricing-view').then(mod => mod.PricingView), { ssr: false, loading: () => <LoadingView /> })
+const ArchiveView = dynamic(() => import('@/components/archive/archive-view').then(mod => mod.ArchiveView), { ssr: false, loading: () => <LoadingView /> })
+const MobileNav = dynamic(() => import('@/components/shared/mobile-nav').then(mod => mod.MobileNav), { ssr: false })
+
+function LoadingView() {
+  return (
+    <div className="flex-1 flex items-center justify-center bg-background min-h-screen">
+      <Loader2 className="w-8 h-8 animate-spin text-primary" />
+    </div>
+  )
+}
 import { useAppStore } from '@/stores/app-store'
 import { useVaultAutolock } from '@/hooks/use-vault-autolock'
 import { useGlobalRealtime } from '@/hooks/use-global-realtime'
