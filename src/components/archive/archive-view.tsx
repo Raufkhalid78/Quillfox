@@ -148,11 +148,11 @@ export function ArchiveView() {
       const todoMap = new Map<string, string>()
       await Promise.all([
         ...archivedNotes.map(async (n) => {
-          const title = await decryptNoteTitle(n.title)
+          const title = await decryptNoteTitle(n.title, n.workspaceId)
           noteMap.set(n.id, title)
         }),
         ...archivedTodos.map(async (t) => {
-          const title = await decryptTodoTitle(t.title)
+          const title = await decryptTodoTitle(t.title, t.workspaceId)
           todoMap.set(t.id, title)
         }),
       ])
