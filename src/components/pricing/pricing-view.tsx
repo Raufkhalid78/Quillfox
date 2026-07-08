@@ -184,9 +184,17 @@ export function PricingView() {
     // Simulate payment processing
     await new Promise((resolve) => setTimeout(resolve, 1500))
     try {
+      // 14 days trial for paid plans, null for free
+      const trialEndsAt = selectedPlan.id === 'free' 
+        ? null 
+        : new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
+
       const { error } = await supabase
         .from('profiles')
-        .update({ tier: selectedPlan.id })
+        .update({ 
+          tier: selectedPlan.id,
+          trial_ends_at: trialEndsAt
+        })
         .eq('id', currentUser.id)
 
       if (error) {

@@ -11,6 +11,7 @@ create table if not exists public.profiles (
   encrypted_master_key text,
   public_rsa_key text,
   encrypted_private_rsa_key text,
+  trial_ends_at timestamp with time zone,
   updated_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 

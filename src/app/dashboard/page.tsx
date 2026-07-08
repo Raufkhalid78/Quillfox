@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { ThemeProvider } from 'next-themes'
-import { Toaster } from 'sonner'
+import { Toaster, toast } from 'sonner'
 import { motion, AnimatePresence } from 'framer-motion'
 import dynamic from 'next/dynamic'
 
@@ -82,7 +82,7 @@ function AppContent() {
       try {
         const { data, error } = await supabase
           .from('profiles')
-          .select('name, image, tier, vault_auto_lock, vault_lock_timeout, vault_passcode_hash, extra_collaborators')
+          .select('name, image, tier, trial_ends_at, vault_auto_lock, vault_lock_timeout, vault_passcode_hash, extra_collaborators')
           .eq('id', currentUserId)
           .single()
 
@@ -98,6 +98,25 @@ function AppContent() {
           } else if (data.tier === 'ultra') {
             mappedTier = 'ultra'
           }
+
+          // Enforce Trial Expiration
+          if (data.trial_ends_at && mappedTier !== 'free') {
+            const trialEndsAt = new Date(data.trial_ends_at).getTime()
+            if (Date.now() > trialEndsAt) {
+              mappedTier = 'free'
+              // Async downgrade in DB
+              supabase
+                .from('profiles')
+                .update({ tier: 'free', trial_ends_at: null })
+                .eq('id', currentUserId)
+                .then(({ error }) => {
+                  if (!error) {
+                    toast.error('Your free trial has expired. You have been reverted to the Free plan.')
+                  }
+                })
+            }
+          }
+
           setTier(mappedTier)
           useAppStore.getState().setExtraCollaborators(data.extra_collaborators ?? 0)
           updateVaultSettings({
