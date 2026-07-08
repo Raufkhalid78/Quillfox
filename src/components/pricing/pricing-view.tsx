@@ -79,7 +79,7 @@ const plans: Plan[] = [
     iconGradient: 'from-[#059669] to-[#0d9488]',
     iconBg: 'bg-[#059669]/10 dark:bg-[#059669]/20',
     features: [
-      { text: '1 active device', included: true },
+      { text: '2 active devices', included: true },
       { text: 'Up to 2 collaborators', included: true },
       { text: '10 notes max', included: true },
       { text: '3 todo lists max', included: true },

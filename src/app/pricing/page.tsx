@@ -41,7 +41,7 @@ export default function PricingPage() {
             <div className="my-4"><span className="text-5xl font-black">$0</span></div>
             <p className="text-sm text-white/50 mb-6">Perfect for personal use and evaluating the platform.</p>
             <ul className="space-y-4 text-sm text-white/70 mb-8">
-              <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-500" /> 1 Active Device</li>
+              <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-500" /> 2 Active Devices</li>
               <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-500" /> 2 Collaborators</li>
               <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-500" /> Unlimited Notes</li>
               <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-500" /> End-to-End Encryption</li>

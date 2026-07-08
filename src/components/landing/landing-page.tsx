@@ -377,7 +377,7 @@ export function LandingPage() {
               <h3 className="text-xl font-bold text-white/80">Free</h3>
               <div className="my-4"><span className="text-5xl font-black">$0</span></div>
               <ul className="space-y-3 text-sm text-white/60 mb-8">
-                <li>1 Active Device</li>
+                <li>2 Active Devices</li>
                 <li>2 Collaborators</li>
                 <li>Unlimited Notes</li>
                 <li>Basic Encryption</li>
