@@ -65,7 +65,7 @@ function Particles() {
   const [particles, setParticles] = useState<{ id: number, x: number, y: number, size: number, speed: number }[]>([])
 
   useEffect(() => {
-    const arr = Array.from({ length: 40 }).map((_, i) => ({
+    const arr = Array.from({ length: 20 }).map((_, i) => ({
       id: i,
       x: Math.random() * 100,
       y: Math.random() * 100,
@@ -80,7 +80,7 @@ function Particles() {
       {particles.map(p => (
         <motion.div
           key={p.id}
-          className="absolute rounded-full bg-primary/40 blur-[2px]"
+          className="absolute rounded-full bg-primary/40 will-change-transform"
           style={{ width: p.size, height: p.size, left: `${p.x}%`, top: `${p.y}%` }}
           animate={{
             y: [0, -100, 0],
@@ -119,9 +119,9 @@ export function LandingPage() {
     <div className="min-h-screen bg-[#050505] text-white selection:bg-primary/30 font-sans overflow-hidden">
       
       {/* Dynamic Background */}
-      <div className="fixed inset-0 z-0">
-        <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] rounded-full bg-emerald-600/20 blur-[120px] mix-blend-screen" />
-        <div className="absolute bottom-[-20%] right-[-10%] w-[60%] h-[60%] rounded-full bg-violet-600/20 blur-[150px] mix-blend-screen" />
+      <div className="fixed inset-0 z-0 pointer-events-none">
+        <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] rounded-full bg-emerald-600/10 blur-[80px] transform-gpu will-change-transform" />
+        <div className="absolute bottom-[-20%] right-[-10%] w-[60%] h-[60%] rounded-full bg-violet-600/10 blur-[100px] transform-gpu will-change-transform" />
         <Particles />
       </div>
 
@@ -204,7 +204,7 @@ export function LandingPage() {
             className="mt-20 w-full max-w-5xl mx-auto"
             style={{ transformStyle: "preserve-3d" }}
           >
-            <div className="relative aspect-video rounded-2xl border border-white/10 bg-black/80 shadow-[0_40px_80px_-20px_rgba(0,0,0,0.8),0_0_40px_rgba(16,185,129,0.2)] overflow-hidden backdrop-blur-2xl">
+            <div className="relative aspect-video rounded-2xl border border-white/10 bg-black/80 shadow-[0_40px_80px_-20px_rgba(0,0,0,0.8),0_0_40px_rgba(16,185,129,0.2)] overflow-hidden backdrop-blur-md">
               {/* Fake UI */}
               <div className="absolute top-0 left-0 right-0 h-12 border-b border-white/5 flex items-center px-4 gap-2">
                 <div className="w-3 h-3 rounded-full bg-red-500/50" />
