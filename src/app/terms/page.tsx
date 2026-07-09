@@ -59,6 +59,21 @@ export default function TermsPage() {
               or other intangible losses, resulting from your access to or use of or inability to access or use the Service.
             </p>
           </section>
+
+          {/* TechyDez KYC Standard Compliance */}
+          <section className="mt-8 border-t border-border/50 pt-8">
+            <h2 className="text-2xl font-bold text-foreground mb-4">6. Business Entity & Governing Law</h2>
+            <p className="mb-4">
+              These Terms and Conditions constitute a legally binding agreement between you and <strong>TechyDez</strong> (the parent company operating QuillFox). Our registered business address is Jhelum, Punjab, Pakistan.
+            </p>
+            <p className="mb-4">
+              These terms are governed by the laws of the Islamic Republic of Pakistan and you agree that the courts of Jhelum will have exclusive jurisdiction in any dispute.
+            </p>
+            <h3 className="text-xl font-semibold text-foreground mb-2 mt-6">Complaint Handling Mechanism</h3>
+            <p>
+              In order to resolve a complaint regarding our services or require support, please contact us by calling <a href="tel:+447517879333" className="text-primary hover:underline">+447517879333</a> or send us an email at <a href="mailto:hello@techydez.com" className="text-primary hover:underline">hello@techydez.com</a>.
+            </p>
+          </section>
         </div>
       </div>
     </div>
