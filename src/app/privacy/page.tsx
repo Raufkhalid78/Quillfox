@@ -57,11 +57,10 @@ export default function PrivacyPage() {
           <section>
             <h2 className="text-2xl font-bold text-foreground mb-4">5. Contact Us</h2>
             <p>
-              If you have questions or comments about this policy, you may email us at privacy@techydez.com or by post to:
+              If you have questions or comments about this policy, you may email us at <a href="mailto:hello@techydez.com" className="text-primary hover:underline">hello@techydez.com</a> or call us at <a href="tel:+447517879333" className="text-primary hover:underline">+447517879333</a>. You may also reach us by post at:
               <br /><br />
-              TechyDez<br />
-              123 Privacy Lane<br />
-              Secure City, SC 12345
+              <strong>TechyDez</strong><br />
+              Jhelum, Punjab, Pakistan
             </p>
           </section>
         </div>
