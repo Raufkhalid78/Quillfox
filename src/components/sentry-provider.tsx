@@ -1,9 +1,12 @@
 "use client";
 
 import { useEffect } from "react";
-import "../../sentry.client.config";
 
 export function SentryProvider({ children }: { children: React.ReactNode }) {
-  // Sentry is initialized when the file is imported above
+  useEffect(() => {
+    // Dynamically import Sentry config only on the browser to prevent SSR crashes
+    import("../../sentry.client.config");
+  }, []);
+
   return <>{children}</>;
 }
