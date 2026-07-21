@@ -38,6 +38,6 @@ const nextConfig: NextConfig = {
 
 export default withSentryConfig(nextConfig, {
   org: "quillfox",
-  project: "quillfox-web",
+  project: "javascript-nextjs",
   silent: !process.env.CI,
 });
