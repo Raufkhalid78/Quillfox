@@ -2,8 +2,6 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { supabase } from '@/lib/supabase'
 
-export type AppView = 'landing' | 'auth' | 'dashboard' | 'note-editor' | 'todo-list' | 'notes' | 'todos' | 'workspaces' | 'settings' | 'pricing' | 'archive'
-
 export interface User {
   id: string
   email: string
@@ -16,6 +14,22 @@ export interface Collaborator {
   userId: string
   userName: string
   avatar?: string | null
+  isTyping?: boolean
+}
+
+export interface FolderData {
+  id: string
+  name: string
+  userId: string
+  createdAt: string
+}
+
+export interface Attachment {
+  id: string
+  filename: string
+  mimeType: string
+  storagePath: string
+  iv: string
 }
 
 export interface NoteItem {
@@ -23,6 +37,9 @@ export interface NoteItem {
   title: string
   content: string
   tags?: string[]
+  attachments?: Attachment[]
+  dueDate?: string
+  folderId?: string
   workspaceId: string | null
   authorId: string
   isPinned: boolean
@@ -39,6 +56,8 @@ export interface TodoItemData {
   authorId: string
   isPinned: boolean
   isArchived: boolean
+  dueDate?: string
+  folderId?: string
   createdAt: string
   updatedAt: string
   items: TodoItemChild[]
@@ -70,14 +89,8 @@ export interface WorkspaceData {
 }
 
 interface AppState {
-  // View
-  currentView: AppView
   // Auth
   currentUser: User | null
-  // Selection
-  selectedNoteId: string | null
-  selectedTodoListId: string | null
-  selectedWorkspaceId: string | null
   // Collaboration
   activeCollaborators: Collaborator[]
   isLocked: boolean
@@ -86,6 +99,7 @@ interface AppState {
   notes: NoteItem[]
   todoLists: TodoItemData[]
   workspaces: WorkspaceData[]
+  folders: FolderData[]
   // E2E Encryption (CryptoKey NOT persisted, excluded via partialize)
   encryptionKey: CryptoKey | null
   encryptionSalt: Uint8Array | null
@@ -103,29 +117,34 @@ interface AppState {
   globalSyncTrigger: number
 
   // Actions
-  setView: (view: AppView) => void
   login: (user: User) => void
   logout: () => void
   setEncryptionKey: (key: CryptoKey, salt: Uint8Array) => void
   setWorkspaceKeys: (keys: Record<string, CryptoKey>) => void
   clearEncryption: () => void
-  selectNote: (noteId: string | null) => void
-  selectTodo: (todoListId: string | null) => void
-  setSelectedWorkspaceId: (id: string | null) => void
   setActiveCollaborators: (collaborators: Collaborator[]) => void
   setLock: (isLocked: boolean, lockedByUser: string | null) => void
   setNotes: (notes: NoteItem[]) => void
   setTodoLists: (todoLists: TodoItemData[]) => void
   setWorkspaces: (workspaces: WorkspaceData[]) => void
+  setFolders: (folders: FolderData[]) => void
   updateNoteContent: (noteId: string, content: string) => void
   updateNoteTitle: (noteId: string, title: string) => void
   addNote: (note: NoteItem) => void
   removeNote: (noteId: string) => void
+  addAttachmentToNote: (noteId: string, attachment: Attachment) => void
+  removeAttachmentFromNote: (noteId: string, attachmentId: string) => void
+  setNoteDueDate: (id: string, dueDate?: string) => void
+  setNoteFolder: (id: string, folderId?: string) => void
   addTodoList: (todoList: TodoItemData) => void
   updateTodoListTitle: (todoListId: string, title: string) => void
   removeTodoList: (todoListId: string) => void
   updateTodoListItems: (todoListId: string, items: TodoItemChild[]) => void
   addTodoItem: (todoListId: string, item: TodoItemChild) => void
+  setTodoDueDate: (id: string, dueDate?: string) => void
+  setTodoFolder: (id: string, folderId?: string) => void
+  addFolder: (folder: FolderData) => void
+  removeFolder: (id: string) => void
   updateUserName: (name: string) => void
   updateUserImage: (image: string | null) => void
   setTier: (tier: 'free' | 'premium' | 'ultra') => void
@@ -139,17 +158,14 @@ export const useAppStore = create<AppState>()(
   persist(
     (set) => ({
       // Initial state
-      currentView: 'landing',
       currentUser: null,
-      selectedNoteId: null,
-      selectedTodoListId: null,
-      selectedWorkspaceId: null,
       activeCollaborators: [],
       isLocked: false,
       lockedByUser: null,
       notes: [],
       todoLists: [],
       workspaces: [],
+      folders: [],
       // E2E encryption state
       encryptionKey: null,
       encryptionSalt: null,
@@ -166,19 +182,13 @@ export const useAppStore = create<AppState>()(
       globalSyncTrigger: 0,
 
       // Actions
-      setView: (view) => set({ currentView: view }),
-
       login: (user) =>
-        set({ currentUser: user, currentView: 'dashboard' }),
+        set({ currentUser: user }),
 
       logout: () => {
         supabase.auth.signOut().catch(console.error)
         set({
           currentUser: null,
-          currentView: 'landing',
-          selectedNoteId: null,
-          selectedTodoListId: null,
-          selectedWorkspaceId: null,
           activeCollaborators: [],
           isLocked: false,
           lockedByUser: null,
@@ -202,21 +212,6 @@ export const useAppStore = create<AppState>()(
       clearEncryption: () =>
         set({ encryptionKey: null, encryptionSalt: null, isEncryptedSession: false, workspaceKeys: {} }),
 
-      selectNote: (noteId) =>
-        set({
-          selectedNoteId: noteId,
-          currentView: noteId ? 'note-editor' : 'notes',
-        }),
-
-      selectTodo: (todoListId) =>
-        set({
-          selectedTodoListId: todoListId,
-          currentView: todoListId ? 'todo-list' : 'todos',
-        }),
-
-      setSelectedWorkspaceId: (id) =>
-        set({ selectedWorkspaceId: id }),
-
       setActiveCollaborators: (collaborators) =>
         set({ activeCollaborators: collaborators }),
 
@@ -228,6 +223,8 @@ export const useAppStore = create<AppState>()(
       setTodoLists: (todoLists) => set({ todoLists }),
 
       setWorkspaces: (workspaces) => set({ workspaces }),
+
+      setFolders: (folders) => set({ folders }),
 
       updateNoteContent: (noteId, content) =>
         set((state) => ({
@@ -249,6 +246,32 @@ export const useAppStore = create<AppState>()(
       removeNote: (noteId) =>
         set((state) => ({
           notes: state.notes.filter((n) => n.id !== noteId),
+        })),
+
+      addAttachmentToNote: (noteId, attachment) =>
+        set((state) => ({
+          notes: state.notes.map((n) =>
+            n.id === noteId ? { ...n, attachments: [...(n.attachments || []), attachment] } : n
+          ),
+        })),
+
+      removeAttachmentFromNote: (noteId, attachmentId) =>
+        set((state) => ({
+          notes: state.notes.map((n) =>
+            n.id === noteId
+              ? { ...n, attachments: (n.attachments || []).filter((a) => a.id !== attachmentId) }
+              : n
+          ),
+        })),
+
+      setNoteDueDate: (id, dueDate) =>
+        set((state) => ({
+          notes: state.notes.map((n) => (n.id === id ? { ...n, dueDate } : n)),
+        })),
+
+      setNoteFolder: (id, folderId) =>
+        set((state) => ({
+          notes: state.notes.map((n) => (n.id === id ? { ...n, folderId } : n)),
         })),
 
       addTodoList: (todoList) =>
@@ -280,6 +303,24 @@ export const useAppStore = create<AppState>()(
           ),
         })),
 
+      setTodoDueDate: (id, dueDate) =>
+        set((state) => ({
+          todoLists: state.todoLists.map((t) => (t.id === id ? { ...t, dueDate } : t)),
+        })),
+
+      setTodoFolder: (id, folderId) =>
+        set((state) => ({
+          todoLists: state.todoLists.map((t) => (t.id === id ? { ...t, folderId } : t)),
+        })),
+
+      addFolder: (folder) =>
+        set((state) => ({ folders: [folder, ...state.folders] })),
+
+      removeFolder: (id) =>
+        set((state) => ({
+          folders: state.folders.filter((f) => f.id !== id),
+        })),
+
       updateUserName: (name) =>
         set((state) => ({
           currentUser: state.currentUser
@@ -303,7 +344,6 @@ export const useAppStore = create<AppState>()(
       name: 'quillfox-app-storage',
       partialize: (state) => ({
         currentUser: state.currentUser,
-        currentView: state.currentView === 'landing' || state.currentView === 'auth' ? state.currentView : state.currentView,
         encryptionSalt: state.encryptionSalt,
         userTier: state.userTier,
         extraCollaborators: state.extraCollaborators,

@@ -17,9 +17,10 @@ import {
   Settings,
 } from 'lucide-react'
 import { useTheme } from 'next-themes'
+import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 
 interface AppSidebarProps {
-  activeView: string
   onUpgradeClick?: () => void
 }
 
@@ -32,36 +33,30 @@ const navItems = [
   { key: 'settings', view: 'settings' as const, icon: Settings, label: 'Settings' },
 ]
 
-export function AppSidebar({ activeView, onUpgradeClick }: AppSidebarProps) {
-  const setView = useAppStore((s) => s.setView)
+export function AppSidebar({ onUpgradeClick }: AppSidebarProps) {
   const logout = useAppStore((s) => s.logout)
   const userTier = useAppStore((s) => s.userTier)
   const { theme, setTheme } = useTheme()
+  const pathname = usePathname()
 
   const isActive = (key: string) => {
-    if (key === 'dashboard') return activeView === 'dashboard'
-    if (key === 'notes') return activeView === 'notes' || activeView === 'note-editor'
-    if (key === 'todos') return activeView === 'todos' || activeView === 'todo-list'
-    if (key === 'workspaces') return activeView === 'workspaces'
-    if (key === 'archive') return activeView === 'archive'
-    if (key === 'settings') return activeView === 'settings'
+    if (key === 'dashboard') return pathname === '/dashboard'
+    if (key === 'notes') return pathname.startsWith('/dashboard/notes')
+    if (key === 'todos') return pathname.startsWith('/dashboard/todos')
+    if (key === 'workspaces') return pathname.startsWith('/dashboard/workspaces')
+    if (key === 'archive') return pathname.startsWith('/dashboard/archive')
+    if (key === 'settings') return pathname.startsWith('/dashboard/settings')
     return false
   }
 
-  const handleClick = (key: string) => {
-    if (key === 'dashboard') setView('dashboard')
-    else if (key === 'notes') setView('notes')
-    else if (key === 'todos') setView('todos')
-    else if (key === 'workspaces') setView('workspaces')
-    else if (key === 'archive') setView('archive')
-    else if (key === 'settings') setView('settings')
+  const getHref = (key: string) => {
+    if (key === 'dashboard') return '/dashboard'
+    return `/dashboard/${key}`
   }
 
   const handleUpgrade = () => {
     if (onUpgradeClick) {
       onUpgradeClick()
-    } else {
-      setView('pricing')
     }
   }
 
@@ -80,18 +75,16 @@ export function AppSidebar({ activeView, onUpgradeClick }: AppSidebarProps) {
           {navItems.map((item) => (
             <Tooltip key={item.key}>
               <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className={`w-10 h-10 rounded-xl transition-all duration-300 ${
+                <Link
+                  href={getHref(item.key)}
+                  className={`w-10 h-10 rounded-xl transition-all duration-300 flex items-center justify-center ${
                     isActive(item.key)
                       ? 'bg-[#6d28d9]/15 dark:bg-[#a855f7]/20 text-[#6d28d9] dark:text-[#a855f7] glow-purple inner-glow'
                       : 'text-muted-foreground hover:text-foreground hover:bg-muted/50 card-lift'
                   }`}
-                  onClick={() => handleClick(item.key)}
                 >
                   <item.icon className="w-4 h-4" />
-                </Button>
+                </Link>
               </TooltipTrigger>
               <TooltipContent side="right">{item.label}</TooltipContent>
             </Tooltip>
@@ -102,18 +95,16 @@ export function AppSidebar({ activeView, onUpgradeClick }: AppSidebarProps) {
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className={`w-10 h-10 rounded-xl transition-all duration-300 ${
-                    activeView === 'pricing'
+                <Link
+                  href="/dashboard/pricing"
+                  className={`w-10 h-10 rounded-xl transition-all duration-300 flex items-center justify-center ${
+                    pathname === '/dashboard/pricing'
                       ? 'bg-[#d97706]/15 text-[#d97706] glow-coral inner-glow'
                       : 'text-muted-foreground hover:text-foreground hover:bg-muted/50 card-lift'
                   }`}
-                  onClick={handleUpgrade}
                 >
                   <Crown className="w-4 h-4" />
-                </Button>
+                </Link>
               </TooltipTrigger>
               <TooltipContent side="right">Pricing</TooltipContent>
             </Tooltip>

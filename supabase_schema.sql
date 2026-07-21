@@ -12,6 +12,7 @@ create table if not exists public.profiles (
   public_rsa_key text,
   encrypted_private_rsa_key text,
   trial_ends_at timestamp with time zone,
+  extra_collaborators integer default 0 not null,
   updated_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
@@ -81,7 +82,7 @@ alter table public.workspaces enable row level security;
 -- 3. Create Workspace Members Table
 create table if not exists public.workspace_members (
   id text primary key,
-  user_id uuid references auth.users on delete cascade not null,
+  user_id uuid references public.profiles(id) on delete cascade not null,
   workspace_id text references public.workspaces on delete cascade not null,
   role text default 'member' not null,
   joined_at timestamp with time zone default timezone('utc'::text, now()) not null,
@@ -326,3 +327,17 @@ drop trigger if exists enforce_workspace_member_limits on public.workspace_membe
 create trigger enforce_workspace_member_limits
   before insert on public.workspace_members
   for each row execute procedure public.check_workspace_member_limits();
+
+-- Create Folders Table
+create table if not exists public.folders (
+  id text primary key,
+  name text not null,
+  user_id uuid references public.profiles(id) on delete cascade not null,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+alter table public.folders enable row level security;
+create policy "Users can view their own folders" on public.folders for select using (auth.uid() = user_id);
+create policy "Users can insert their own folders" on public.folders for insert with check (auth.uid() = user_id);
+create policy "Users can update their own folders" on public.folders for update using (auth.uid() = user_id);
+create policy "Users can delete their own folders" on public.folders for delete using (auth.uid() = user_id);

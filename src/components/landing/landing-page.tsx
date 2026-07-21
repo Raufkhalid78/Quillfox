@@ -134,9 +134,9 @@ export function LandingPage() {
           <span className="text-xl font-bold tracking-tighter">QuillFox</span>
         </div>
         <div className="flex items-center gap-4">
-          <Button variant="ghost" className="text-white/70 hover:text-white" onClick={() => router.push('/dashboard')}>Log in</Button>
+          <Button variant="ghost" className="text-white/70 hover:text-white" onClick={() => router.push('/auth')}>Log in</Button>
           <Button 
-            onClick={() => router.push('/dashboard')}
+            onClick={() => router.push('/auth')}
             className="bg-white text-black hover:bg-white/90 rounded-full px-6 font-medium shadow-[0_0_20px_rgba(255,255,255,0.3)] transition-shadow hover:shadow-[0_0_30px_rgba(255,255,255,0.5)]"
           >
             Get Started
@@ -171,27 +171,39 @@ export function LandingPage() {
             >
               End-to-end encrypted notes, tasks, and real-time collaboration wrapped in a stunning, physics-based interface.
             </motion.p>
-
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.8, delay: 0.4, ease: "easeOut" }}
-              className="flex flex-col sm:flex-row items-center justify-center gap-4"
             >
               <Button 
-                onClick={() => router.push('/dashboard')}
+                onClick={() => router.push('/auth')}
                 size="lg" 
                 className="h-14 px-8 text-lg rounded-full bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white shadow-[0_0_40px_rgba(16,185,129,0.4)] hover:shadow-[0_0_60px_rgba(16,185,129,0.6)] transition-all group"
               >
-                Enter the Vault <ChevronRight className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                Enter the Web Vault <ChevronRight className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />
+              </Button>
+            </motion.div>
+            
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.8, delay: 0.5, ease: "easeOut" }}
+              className="flex flex-col sm:flex-row items-center justify-center gap-4 mt-6"
+            >
+              <Button 
+                variant="outline" 
+                size="lg" 
+                className="h-12 px-6 rounded-full border-white/20 text-white hover:bg-white/5 flex items-center gap-2"
+              >
+                <img src="/apple-logo.svg" alt="iOS" className="w-5 h-5 invert" /> Download on App Store
               </Button>
               <Button 
                 variant="outline" 
                 size="lg" 
-                onClick={() => router.push('/pricing')}
-                className="h-14 px-8 text-lg rounded-full border-white/20 text-white hover:bg-white/5"
+                className="h-12 px-6 rounded-full border-white/20 text-white hover:bg-white/5 flex items-center gap-2"
               >
-                View Pricing
+                <img src="/google-play.svg" alt="Android" className="w-5 h-5" /> Get it on Google Play
               </Button>
             </motion.div>
           </motion.div>
@@ -243,20 +255,26 @@ export function LandingPage() {
             
             <TiltCard className="bg-gradient-to-br from-violet-500/10 to-white/0">
               <Users className="w-12 h-12 text-violet-400 mb-6" />
-              <h3 className="text-2xl font-bold mb-2">Real-time Collab</h3>
-              <p className="text-white/60">Invite your team to workspaces. See their cursors in real-time.</p>
+              <h3 className="text-2xl font-bold mb-2">Live Presence</h3>
+              <p className="text-white/60">Invite your team to workspaces. See their cursors and avatars typing in real-time.</p>
             </TiltCard>
 
             <TiltCard className="bg-gradient-to-br from-blue-500/10 to-white/0">
               <Zap className="w-12 h-12 text-blue-400 mb-6" />
-              <h3 className="text-2xl font-bold mb-2">Lightning Fast</h3>
-              <p className="text-white/60">Optimized for speed. Notes load instantly, synced in the background.</p>
+              <h3 className="text-2xl font-bold mb-2">Home Screen Widgets</h3>
+              <p className="text-white/60">Stay on top of your tasks and notes right from your iOS or Android home screen.</p>
             </TiltCard>
 
-            <TiltCard className="col-span-1 md:col-span-2 bg-gradient-to-br from-amber-500/10 to-white/0">
+            <TiltCard className="bg-gradient-to-br from-amber-500/10 to-white/0">
               <Lock className="w-12 h-12 text-amber-400 mb-6" />
               <h3 className="text-2xl font-bold mb-2">Vault Auto-Lock</h3>
-              <p className="text-white/60">Step away with peace of mind. QuillFox automatically drops your decryption keys after inactivity, requiring a passcode to re-enter.</p>
+              <p className="text-white/60">Step away with peace of mind. QuillFox automatically drops your decryption keys after inactivity.</p>
+            </TiltCard>
+            
+            <TiltCard className="bg-gradient-to-br from-pink-500/10 to-white/0">
+              <Sparkles className="w-12 h-12 text-pink-400 mb-6" />
+              <h3 className="text-2xl font-bold mb-2">Reminders & Folders</h3>
+              <p className="text-white/60">Organize everything into private folders and set push notifications for due dates.</p>
             </TiltCard>
           </div>
         </section>
@@ -379,8 +397,8 @@ export function LandingPage() {
               <ul className="space-y-3 text-sm text-white/60 mb-8">
                 <li>2 Active Devices</li>
                 <li>2 Collaborators</li>
-                <li>Unlimited Notes</li>
-                <li>Basic Encryption</li>
+                <li>Max 2 notes with attachments</li>
+                <li>5MB max per attachment</li>
               </ul>
               <Button variant="outline" className="w-full rounded-full border-white/20">Get Started</Button>
             </motion.div>
@@ -398,10 +416,10 @@ export function LandingPage() {
               <ul className="space-y-3 text-sm text-white/80 mb-8 font-medium">
                 <li>3 Active Devices</li>
                 <li>15 Collaborators</li>
-                <li>Advanced E2EE</li>
-                <li>Add-ons Available</li>
+                <li>Unlimited attachments</li>
+                <li>Priority features</li>
               </ul>
-              <Button onClick={() => router.push('/dashboard')} className="w-full rounded-full bg-emerald-500 hover:bg-emerald-400 text-black font-bold">Start Free Trial</Button>
+              <Button onClick={() => router.push('/auth')} className="w-full rounded-full bg-emerald-500 hover:bg-emerald-400 text-black font-bold">Start Free Trial</Button>
             </motion.div>
 
             {/* Ultra */}

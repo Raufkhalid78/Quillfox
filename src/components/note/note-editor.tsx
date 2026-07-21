@@ -1,39 +1,36 @@
 'use client'
 
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { motion } from 'framer-motion'
 import { useAppStore } from '@/stores/app-store'
 import { encryptNoteContent, encryptNoteTitle, decryptNoteContent, decryptNoteTitle } from '@/lib/encrypted-api'
 import { logActivity } from '@/lib/activity'
 import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import { toast } from 'sonner'
 import { AppSidebar } from '@/components/shared/app-sidebar'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
-import { ArrowLeft, Loader2, ShieldCheck, ShieldAlert, Pin, Archive, ArchiveRestore, Share2, History, MoreVertical, Trash2 } from 'lucide-react'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { formatDistanceToNow } from 'date-fns'
+import { ArrowLeft, Loader2, Paperclip } from 'lucide-react'
 import { NotionEditor } from './notion-editor'
+import { useParams, useRouter } from 'next/navigation'
+import { NoteHeader } from './note-header'
+import { NoteHistoryDialog } from './note-history-dialog'
+import { NoteAttachments } from './note-attachments'
 
 export function NoteEditor() {
   const currentUser = useAppStore((s) => s.currentUser)
-  const selectedNoteId = useAppStore((s) => s.selectedNoteId)
+  const params = useParams()
+  const router = useRouter()
+  const selectedNoteId = params.id as string
   const notes = useAppStore((s) => s.notes)
-  const updateNoteContent = useAppStore((s) => s.updateNoteContent)
   const updateNoteTitle = useAppStore((s) => s.updateNoteTitle)
-  const setView = useAppStore((s) => s.setView)
   const isEncryptedSession = useAppStore((s) => s.isEncryptedSession)
+  const activeCollaborators = useAppStore((s) => s.activeCollaborators)
+  const userTier = useAppStore((s) => s.userTier)
+  const addAttachmentToNote = useAppStore((s) => s.addAttachmentToNote)
+  const removeAttachmentFromNote = useAppStore((s) => s.removeAttachmentFromNote)
+  const updateNoteContent = useAppStore((s) => s.updateNoteContent)
 
   const note = notes.find((n) => n.id === selectedNoteId)
 
@@ -42,14 +39,16 @@ export function NoteEditor() {
   const [initialLoad, setInitialLoad] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
-  const [versions, setVersions] = useState<Array<{ id: string; title: string; content: string; version: number; createdAt: string }>>([])
-  const [decryptedVersions, setDecryptedVersions] = useState<Array<{ id: string; title: string; content: string; version: number; createdAt: string }>>([])
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   
-  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const titleRef = useRef(title)
   const contentRef = useRef(content)
   const lastVersionSaveTime = useRef(Date.now())
   const lastLocalSaveTimeRef = useRef<number>(0)
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const isTyping = useRef(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [isUploading, setIsUploading] = useState(false)
 
   useEffect(() => {
     titleRef.current = title
@@ -70,7 +69,7 @@ export function NoteEditor() {
 
         if (error || !data) {
           toast.error('Failed to load note')
-          setView('notes')
+          router.push('/dashboard/notes')
           return
         }
 
@@ -81,7 +80,7 @@ export function NoteEditor() {
         setInitialLoad(false)
       } catch {
         toast.error('Network error')
-        setView('notes')
+        router.push('/dashboard/notes')
       }
       setInitialLoad(false)
     }
@@ -117,7 +116,7 @@ export function NoteEditor() {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [selectedNoteId, setView])
+  }, [selectedNoteId, router])
 
   // Auto-save debounced (with encryption)
   const saveContent = useCallback(async () => {
@@ -175,39 +174,30 @@ export function NoteEditor() {
     } finally {
       setIsSaving(false)
     }
-  }, [selectedNoteId, isSaving, updateNoteContent, updateNoteTitle])
-
-  const handleContentChange = useCallback(
-    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-      const newContent = e.target.value
-      setContent(newContent)
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current)
-      }
-      saveTimeoutRef.current = setTimeout(() => {
-        saveTimeoutRef.current = null
-        saveContent()
-      }, 1500)
-    },
-    [saveContent]
-  )
+  }, [selectedNoteId, isSaving, updateNoteContent, updateNoteTitle, note?.workspaceId])
 
   const handleTitleChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const newTitle = e.target.value
       setTitle(newTitle)
+      if (!isTyping.current && selectedNoteId) {
+        isTyping.current = true
+        supabase.channel(`room:note-${selectedNoteId}`).track({ userId: currentUser?.id, isTyping: true })
+      }
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current)
       }
       saveTimeoutRef.current = setTimeout(() => {
         saveTimeoutRef.current = null
         saveContent()
+        if (isTyping.current && selectedNoteId) {
+          isTyping.current = false
+          supabase.channel(`room:note-${selectedNoteId}`).track({ userId: currentUser?.id, isTyping: false })
+        }
       }, 1500)
     },
-    [saveContent]
+    [saveContent, selectedNoteId, currentUser]
   )
-
-  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
 
   const handleDelete = async () => {
     if (!selectedNoteId) return
@@ -225,7 +215,7 @@ export function NoteEditor() {
       removeNote(selectedNoteId)
       toast.success('Note deleted')
       setDeleteConfirmOpen(false)
-      setView('notes')
+      router.push('/dashboard/notes')
     } catch {
       toast.error('Failed to delete note')
     }
@@ -238,22 +228,92 @@ export function NoteEditor() {
     if (!selectedNoteId || !note) return
     const newPinned = !note.isPinned
     try {
-      const { error } = await supabase
-        .from('notes')
-        .update({
-          is_pinned: newPinned,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', selectedNoteId)
+      await supabase.from('notes').update({ is_pinned: newPinned }).eq('id', selectedNoteId)
+      updateNoteTitle(selectedNoteId, title) // Trigger re-render (hack)
+      setNotesAction(notes.map((n) => (n.id === selectedNoteId ? { ...n, isPinned: newPinned } : n)))
+    } catch {}
+  }
 
-      if (!error) {
-        const updated = notes.map((n) => n.id === selectedNoteId ? { ...n, isPinned: newPinned } : n)
-        setNotesAction(updated)
-        toast.success(newPinned ? 'Note pinned' : 'Note unpinned')
-      } else {
-        toast.error('Failed to update')
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !note) return
+
+    if (userTier === 'free' && (note.attachments?.length || 0) >= 2) {
+      toast.error('Free tier is limited to 2 attachments per note.')
+      if (fileInputRef.current) fileInputRef.current.value = ''
+      return
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('File size cannot exceed 5MB.')
+      if (fileInputRef.current) fileInputRef.current.value = ''
+      return
+    }
+
+    setIsUploading(true)
+    try {
+      const ext = file.name.split('.').pop()
+      const storagePath = `${currentUser?.id}/${note.id}/${crypto.randomUUID()}.${ext}`
+      const { error } = await supabase.storage.from('attachments').upload(storagePath, file)
+      
+      if (error) throw error
+
+      const newAttachment = {
+        id: crypto.randomUUID(),
+        filename: file.name,
+        mimeType: file.type,
+        storagePath,
+        iv: ''
       }
-    } catch { toast.error('Failed to update') }
+      
+      const updatedAttachments = [...(note.attachments || []), newAttachment]
+      const { error: updateError } = await supabase.from('notes').update({ attachments: updatedAttachments }).eq('id', note.id)
+      
+      if (updateError) throw updateError
+      
+      addAttachmentToNote(note.id, newAttachment)
+      toast.success('File uploaded successfully')
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to upload file')
+    } finally {
+      setIsUploading(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
+
+  const handleDeleteAttachment = async (attachmentId: string, storagePath: string) => {
+    if (!note) return
+    try {
+      const { error: storageError } = await supabase.storage.from('attachments').remove([storagePath])
+      if (storageError) throw storageError
+      
+      const updatedAttachments = (note.attachments || []).filter(a => a.id !== attachmentId)
+      const { error: dbError } = await supabase.from('notes').update({ attachments: updatedAttachments }).eq('id', note.id)
+      if (dbError) throw dbError
+      
+      removeAttachmentFromNote(note.id, attachmentId)
+      toast.success('Attachment deleted')
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to delete attachment')
+    }
+  }
+
+  const handleDownloadAttachment = async (storagePath: string, filename: string) => {
+    try {
+      const { data, error } = await supabase.storage.from('attachments').createSignedUrl(storagePath, 60)
+      if (error) throw error
+      if (data?.signedUrl) {
+        const link = document.createElement('a')
+        link.href = data.signedUrl
+        link.download = filename
+        link.target = '_blank'
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+      }
+    } catch (error: any) {
+      toast.error('Failed to download file')
+    }
   }
 
   const handleToggleArchive = async () => {
@@ -272,7 +332,7 @@ export function NoteEditor() {
         if (newArchived) {
           const updated = notes.filter((n) => n.id !== selectedNoteId)
           setNotesAction(updated)
-          setView('notes')
+          router.push('/dashboard/notes')
         } else {
           const updated = notes.map((n) => n.id === selectedNoteId ? { ...n, isArchived: false } : n)
           setNotesAction(updated)
@@ -284,102 +344,9 @@ export function NoteEditor() {
     } catch { toast.error('Failed to update') }
   }
 
-
-  const handleOpenHistory = async () => {
-    if (!selectedNoteId) return
-    try {
-      const { data, error } = await supabase
-        .from('note_versions')
-        .select('*')
-        .eq('note_id', selectedNoteId)
-        .order('version', { ascending: false })
-
-      if (error) {
-        toast.error('Failed to load history')
-        return
-      }
-
-      const formatted = data.map((v: any) => ({
-        id: v.id,
-        title: v.title,
-        content: v.content,
-        version: v.version,
-        createdAt: v.created_at,
-      }))
-
-      const decrypted = await Promise.all(formatted.map(async (v: any) => ({
-        ...v,
-        title: await decryptNoteTitle(v.title),
-        content: await decryptNoteContent(v.content || ''),
-      })))
-
-      setDecryptedVersions(decrypted)
-      setVersions(formatted)
-      setHistoryOpen(true)
-    } catch { toast.error('Failed to load history') }
-  }
-
-  const handleSaveVersion = async () => {
-    if (!selectedNoteId) return
-    try {
-      const encryptedTitle = await encryptNoteTitle(title)
-      const encryptedContent = await encryptNoteContent(content)
-      
-      const { data: versionsList, error: verErr } = await supabase
-        .from('note_versions')
-        .select('version')
-        .eq('note_id', selectedNoteId)
-        .order('version', { ascending: false })
-        .limit(1)
-
-      const lastVer = versionsList && versionsList.length > 0 ? versionsList[0].version : 0
-      const nextVer = lastVer + 1
-      const versionId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2)
-
-      const { data: newVer, error } = await supabase
-        .from('note_versions')
-        .insert({
-          id: versionId,
-          note_id: selectedNoteId,
-          title: encryptedTitle,
-          content: encryptedContent,
-          version: nextVer,
-        })
-        .select()
-        .single()
-
-      if (error) {
-        toast.error('Failed to save version')
-        return
-      }
-
-      const formatted = {
-        id: newVer.id,
-        title: newVer.title,
-        content: newVer.content,
-        version: newVer.version,
-        createdAt: newVer.created_at,
-      }
-
-      setVersions([formatted, ...versions])
-      setDecryptedVersions((prev) => [{
-        ...formatted,
-        title,
-        content,
-      }, ...prev])
-      toast.success('Version saved')
-    } catch { toast.error('Failed to save version') }
-  }
-
-  const handleRestoreVersion = async (versionId: string) => {
-    if (!selectedNoteId) return
-    const decrypted = decryptedVersions.find((v) => v.id === versionId)
-    if (!decrypted) return
-    setTitle(decrypted.title)
-    setContent(decrypted.content)
-    setHistoryOpen(false)
-    toast.success(`Restored version ${decrypted.version}`)
-    // Trigger auto-save
+  const handleRestoreVersion = (restoredTitle: string, restoredContent: string) => {
+    setTitle(restoredTitle)
+    setContent(restoredContent)
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
     saveTimeoutRef.current = setTimeout(() => {
       saveTimeoutRef.current = null
@@ -388,189 +355,140 @@ export function NoteEditor() {
   }
 
   useEffect(() => {
-    if (!note && !initialLoad) setView('notes')
-  }, [note, initialLoad, setView])
+    if (!note && !initialLoad) router.push('/dashboard/notes')
+  }, [note, initialLoad, router])
 
   if (!note && !initialLoad) return null
 
-  const getInitials = (name: string | null) => {
-    if (!name) return 'U'
-    return name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2)
-  }
-
   return (
     <div className="min-h-screen flex bg-gradient-mesh-dash noise-overlay">
-      <AppSidebar activeView="note-editor" />
+      <AppSidebar  />
 
       <div className="flex-1 flex flex-col min-w-0">
-      {/* Header */}
-      <header className="sticky top-0 z-50 glass-header">
-        <div className="max-w-4xl mx-auto px-3 sm:px-4 h-14 flex items-center gap-2">
-          <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setView('notes')}
-              className="shrink-0 h-8 w-8"
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </Button>
-          </motion.div>
-
-          <Separator orientation="vertical" className="h-6 hidden sm:block" />
-
-          <Input
-            value={title}
-            onChange={handleTitleChange}
-            className="flex-1 min-w-0 border-0 focus-visible:ring-0 text-base sm:text-lg font-semibold px-1 h-auto py-1 bg-transparent"
-            placeholder="Untitled Note"
-          />
-
-          <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
-            {/* Encryption indicator */}
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  {isEncryptedSession ? (
-                    <ShieldCheck className="w-4 h-4 text-[#059669]" />
-                  ) : (
-                    <ShieldAlert className="w-4 h-4 text-amber-500" />
-                  )}
-                </TooltipTrigger>
-                <TooltipContent>
-                  {isEncryptedSession ? 'End-to-end encrypted' : 'Encryption not active'}
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-
-            {isSaving && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="flex items-center text-xs text-muted-foreground"
-              >
-                <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                <span className="hidden sm:inline">Saving</span>
-              </motion.div>
-            )}
-
-            {/* Actions dropdown */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="icon" className="h-8 w-8 hover:bg-[#059669]/10 dark:hover:bg-[#059669]/20">
-                  <MoreVertical className="w-4 h-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
-                <DropdownMenuItem onClick={handleOpenHistory}>
-                  <History className="w-4 h-4 mr-2" />
-                  Version History
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleTogglePin}>
-                  <Pin className={`w-4 h-4 mr-2 ${note?.isPinned ? 'fill-current' : ''}`} />
-                  {note?.isPinned ? 'Unpin' : 'Pin'}
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={handleToggleArchive}>
-                  {note?.isArchived ? <ArchiveRestore className="w-4 h-4 mr-2" /> : <Archive className="w-4 h-4 mr-2" />}
-                  {note?.isArchived ? 'Restore from Archive' : 'Archive'}
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => setDeleteConfirmOpen(true)} className="text-destructive focus:text-destructive">
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  Delete
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        </div>
-      </header>
-
-      {/* Editor Area */}
-      <div className="flex-1 max-w-4xl mx-auto w-full px-4 py-6">
-        <div className="glass-card inner-glow rounded-3xl min-h-[calc(100vh-8rem)]">
-        {initialLoad ? (
-          <div className="flex items-center justify-center py-20">
-            <Loader2 className="w-6 h-6 animate-spin text-[#059669]" />
-            <span className="ml-2 text-muted-foreground">Loading note...</span>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {/* Toolbar hint */}
-            <div className="flex items-center gap-2 mb-3">
-              <p className="text-xs text-muted-foreground">
-                Start typing to edit. Content auto-saves every 1.5 seconds.
-              </p>
-              <Badge variant="secondary" className="text-[10px] font-normal">
-                {content.length} chars
-              </Badge>
-            </div>
-            {/* Notion-Style Markdown Editor */}
-            <NotionEditor
-              content={content}
-              onChange={(val) => {
-                setContent(val)
-                if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
-                saveTimeoutRef.current = setTimeout(() => {
-                  saveTimeoutRef.current = null
-                  saveContent()
-                }, 1500)
-              }}
-              disabled={initialLoad}
-            />
-          </div>
-        )}
-        </div>
-      </div>
-
-      </div>
-      {/* Version History Dialog */}
-      <Dialog open={historyOpen} onOpenChange={setHistoryOpen}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <History className="w-5 h-5 text-[#059669]" />
-              Version History
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <Button
-              size="sm"
-              className="w-full bg-gradient-to-r from-[#059669] to-[#0d9488] text-white hover:from-[#059669]/90 hover:to-[#0d9488]/90"
-              onClick={handleSaveVersion}
-            >
-              Save Current Version
-            </Button>
-            <div className="max-h-96 overflow-y-auto space-y-2">
-              {decryptedVersions.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-8">No versions saved yet. Click &ldquo;Save Current Version&rdquo; to create a snapshot.</p>
-              ) : (
-                decryptedVersions.map((v) => (
-                  <div key={v.id} className="flex items-center gap-3 p-3 rounded-lg border border-border/50 hover:border-[#059669]/30 transition-colors">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <Badge variant="secondary" className="text-xs">v{v.version}</Badge>
-                        <span className="text-xs text-muted-foreground">
-                          {formatDistanceToNow(new Date(v.createdAt), { addSuffix: true })}
-                        </span>
+        <NoteHeader
+          note={note}
+          title={title}
+          handleTitleChange={handleTitleChange}
+          isSaving={isSaving}
+          isEncryptedSession={isEncryptedSession}
+          currentUser={currentUser}
+          isTypingRef={isTyping}
+          saveTimeoutRef={saveTimeoutRef}
+          saveContent={saveContent}
+          onOpenHistory={() => setHistoryOpen(true)}
+          onTogglePin={handleTogglePin}
+          onToggleArchive={handleToggleArchive}
+          onDelete={() => setDeleteConfirmOpen(true)}
+        />
+        
+        {/* Editor Area */}
+        <div className="flex-1 max-w-4xl mx-auto w-full px-4 py-6">
+          <div className="glass-card inner-glow rounded-3xl min-h-[calc(100vh-8rem)]">
+            {initialLoad ? (
+              <div className="flex items-center justify-center py-20">
+                <Loader2 className="w-6 h-6 animate-spin text-[#059669]" />
+                <span className="ml-2 text-muted-foreground">Loading note...</span>
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center justify-between p-2 border-b border-white/5 bg-black/20">
+                  <div className="flex items-center gap-2">
+                    <Button variant="ghost" size="icon" onClick={() => {
+                      if (isTyping.current && note?.id) {
+                        isTyping.current = false
+                        supabase.channel(`room:note-${note.id}`).track({ userId: currentUser?.id, isTyping: false })
+                      }
+                      router.push('/dashboard/notes')
+                    }}>
+                      <ArrowLeft className="w-4 h-4" />
+                    </Button>
+                    {isSaving && <Loader2 className="w-4 h-4 animate-spin text-white/50" />}
+                  </div>
+                  
+                  <div className="flex items-center gap-4">
+                    {activeCollaborators.length > 0 && (
+                      <div className="flex items-center mr-2">
+                        {activeCollaborators.map((collaborator, index) => (
+                          <div key={collaborator.userId} className={`relative ${index > 0 ? '-ml-2' : ''} w-8 h-8 rounded-full border-2 border-background bg-primary flex items-center justify-center`}>
+                            {collaborator.avatar ? (
+                              <img src={collaborator.avatar} alt={collaborator.userName} className="w-full h-full rounded-full object-cover" />
+                            ) : (
+                              <span className="text-[10px] text-primary-foreground font-bold">{collaborator.userName.charAt(0).toUpperCase()}</span>
+                            )}
+                            {collaborator.isTyping && (
+                              <div className="absolute -bottom-1 -right-1 bg-green-500 w-3 h-3 rounded-full border-2 border-background" />
+                            )}
+                          </div>
+                        ))}
                       </div>
-                      <p className="text-sm font-medium truncate mt-1">{v.title}</p>
-                      <p className="text-xs text-muted-foreground truncate">{v.content.substring(0, 80)}...</p>
-                    </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleRestoreVersion(v.id)}
-                    >
-                      Restore
+                    )}
+                    <TooltipProvider delayDuration={0}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div className="flex items-center gap-2 mb-3">
+                            <p className="text-xs text-muted-foreground">
+                              Start typing to edit. Content auto-saves every 1.5 seconds.
+                            </p>
+                            <Badge variant="secondary" className="text-[10px] font-normal">
+                              {content.length} chars
+                            </Badge>
+                          </div>
+                        </TooltipTrigger>
+                      </Tooltip>
+                    </TooltipProvider>
+                    
+                    <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" />
+                    <Button variant="outline" size="sm" className="h-8 gap-2 ml-2" onClick={() => fileInputRef.current?.click()} disabled={isUploading}>
+                      {isUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Paperclip className="w-3.5 h-3.5" />}
+                      Attach
                     </Button>
                   </div>
-                ))
-              )}
-            </div>
+                </div>
+                <div className="p-4">
+                  {/* Attachments Section */}
+                  <NoteAttachments
+                    attachments={note?.attachments}
+                    onDownload={handleDownloadAttachment}
+                    onDelete={handleDeleteAttachment}
+                  />
+
+                  {/* Notion-Style Markdown Editor */}
+                  <NotionEditor
+                    content={content}
+                    onChange={(val) => {
+                      setContent(val)
+                      if (!isTyping.current && note?.id) {
+                        isTyping.current = true
+                        supabase.channel(`room:note-${note.id}`).track({ userId: currentUser?.id, isTyping: true })
+                      }
+                      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
+                      saveTimeoutRef.current = setTimeout(() => {
+                        saveTimeoutRef.current = null
+                        saveContent()
+                        if (isTyping.current && note?.id) {
+                          isTyping.current = false
+                          supabase.channel(`room:note-${note.id}`).track({ userId: currentUser?.id, isTyping: false })
+                        }
+                      }, 1500)
+                    }}
+                    disabled={initialLoad}
+                  />
+                </div>
+              </>
+            )}
           </div>
-        </DialogContent>
-      </Dialog>
+        </div>
+      </div>
+
+      <NoteHistoryDialog
+        open={historyOpen}
+        onOpenChange={setHistoryOpen}
+        selectedNoteId={selectedNoteId}
+        workspaceId={note?.workspaceId}
+        currentTitle={title}
+        currentContent={content}
+        onRestore={handleRestoreVersion}
+      />
 
       {/* Delete Confirmation */}
       <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>

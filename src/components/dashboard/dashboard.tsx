@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge'
 import { TodosList } from '@/components/todos/todos-list'
 import { WorkspacesView } from '@/components/workspaces/workspaces-view'
 import { MultiInviteDialog } from '@/components/workspaces/multi-invite-dialog'
+import { ManageMembersDialog } from '@/components/workspaces/manage-members-dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
@@ -52,6 +53,7 @@ import {
   ChevronRight,
   Mail,
 } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import { DashboardHeader } from './dashboard-header'
 import { DashboardQuickActions } from './dashboard-quick-actions'
 import { DashboardRecentItems } from './dashboard-recent-items'
@@ -70,19 +72,19 @@ const fadeUp = {
 }
 
 export function Dashboard() {
+  const router = useRouter()
   const currentUser = useAppStore((s) => s.currentUser)
   const notes = useAppStore((s) => s.notes)
   const todoLists = useAppStore((s) => s.todoLists)
   const workspaces = useAppStore((s) => s.workspaces)
-  const setView = useAppStore((s) => s.setView)
-  const selectNote = useAppStore((s) => s.selectNote)
-  const selectTodo = useAppStore((s) => s.selectTodo)
+  const folders = useAppStore((s) => s.folders)
   const logout = useAppStore((s) => s.logout)
   const addNote = useAppStore((s) => s.addNote)
   const addTodoList = useAppStore((s) => s.addTodoList)
   const setNotes = useAppStore((s) => s.setNotes)
   const setTodoListsAction = useAppStore((s) => s.setTodoLists)
   const setWorkspacesAction = useAppStore((s) => s.setWorkspaces)
+  const setFolders = useAppStore((s) => s.setFolders)
   const isEncryptedSession = useAppStore((s) => s.isEncryptedSession)
   const userTier = useAppStore((s) => s.userTier)
 
@@ -95,6 +97,7 @@ export function Dashboard() {
   const [quickNoteTitle, setQuickNoteTitle] = useState('')
   const [quickTodoTitle, setQuickTodoTitle] = useState('')
   const [isQuickCreating, setIsQuickCreating] = useState(false)
+  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null)
 
   const [decryptedNotes, setDecryptedNotes] = useState<Map<string, { title: string; preview: string; updatedAt: string }>>(new Map())
   const [decryptedTodos, setDecryptedTodos] = useState<Map<string, { title: string; updatedAt: string }>>(new Map())
@@ -135,15 +138,23 @@ export function Dashboard() {
         .from('profiles')
         .select('tier, extra_collaborators')
         .eq('id', currentUser.id)
-        .single()
+        .limit(1)
+        .maybeSingle()
 
       if (profileData) {
         const t = profileData.tier;
         useAppStore.getState().setTier(t === 'ultra' || t === 'ultra_premium' ? 'ultra' : t === 'premium' ? 'premium' : 'free');
-        useAppStore.getState().setActiveCollaborators(profileData.extra_collaborators || 0);
+        useAppStore.getState().setExtraCollaborators(profileData.extra_collaborators || 0);
       }
 
-      if (notesErr || todosErr || ownedErr || memberErr) {
+      // 6. Fetch folders
+      const { data: foldersData, error: foldersErr } = await supabase
+        .from('folders')
+        .select('*')
+        .eq('user_id', currentUser.id)
+
+      if (notesErr || todosErr || ownedErr || memberErr || foldersErr) {
+        console.error('Fetch errors:', { notesErr, todosErr, ownedErr, memberErr, foldersErr })
         toast.error('Failed to load data')
         return
       }
@@ -154,6 +165,9 @@ export function Dashboard() {
         title: n.title,
         content: n.content,
         tags: n.tags || [],
+        attachments: n.attachments || [],
+        dueDate: n.due_date || undefined,
+        folderId: n.folder_id || undefined,
         workspaceId: n.workspace_id,
         authorId: n.author_id,
         isPinned: n.is_pinned,
@@ -170,6 +184,8 @@ export function Dashboard() {
         content: '',
         workspaceId: t.workspace_id,
         authorId: t.author_id,
+        dueDate: t.due_date || undefined,
+        folderId: t.folder_id || undefined,
         isPinned: t.is_pinned,
         isArchived: t.is_archived,
         createdAt: t.created_at,
@@ -214,6 +230,15 @@ export function Dashboard() {
       }))
       formattedWorkspaces.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
       setWorkspacesAction(formattedWorkspaces)
+
+      // Format folders
+      const formattedFolders = (foldersData || []).map((f: any) => ({
+        id: f.id,
+        name: f.name,
+        userId: f.user_id,
+        createdAt: f.created_at,
+      }))
+      setFolders(formattedFolders)
 
     } catch {
       toast.error('Failed to load data')
@@ -531,7 +556,7 @@ export function Dashboard() {
   }
 
   const recentNotes = notes
-    .filter((n) => !n.isArchived)
+    .filter((n) => !n.isArchived && (!selectedFolderId || n.folderId === selectedFolderId))
     .sort((a, b) => {
       if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1
       return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
@@ -539,7 +564,7 @@ export function Dashboard() {
     .slice(0, 4)
 
   const recentTodos = todoLists
-    .filter((t) => !t.isArchived)
+    .filter((t) => !t.isArchived && (!selectedFolderId || t.folderId === selectedFolderId))
     .sort((a, b) => {
       if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1
       return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
@@ -561,8 +586,8 @@ export function Dashboard() {
   const { theme, setTheme } = useTheme()
 
   useEffect(() => {
-    if (!currentUser) setView('auth')
-  }, [currentUser, setView])
+    if (!currentUser) router.push('/auth')
+  }, [currentUser, router])
 
   if (!currentUser) return null
 
@@ -574,7 +599,7 @@ export function Dashboard() {
 
   return (
     <div className="min-h-screen flex bg-gradient-mesh-dash noise-overlay">
-      <AppSidebar activeView="dashboard" onUpgradeClick={() => setView('pricing')} />
+      <AppSidebar   />
 
       {/* ── Main Content ── */}
       <div className="flex-1 flex flex-col min-w-0">
@@ -585,7 +610,6 @@ export function Dashboard() {
           setTheme={setTheme}
           currentUser={currentUser!}
           userTier={userTier}
-          setView={setView}
           logout={logout}
         />
 
@@ -615,8 +639,6 @@ export function Dashboard() {
                   addNote={addNote}
                   addTodoList={addTodoList}
                   setWorkspacesAction={setWorkspacesAction}
-                  selectNote={selectNote}
-                  selectTodo={selectTodo}
                 />
               </motion.div>
             </motion.div>
@@ -655,6 +677,40 @@ export function Dashboard() {
               </div>
               <DashboardAnalytics />
             </motion.section>
+
+            {/* ── Folders ── */}
+            {folders.length > 0 && (
+              <motion.section initial="hidden" animate="visible" variants={stagger}>
+                <motion.div variants={fadeUp} className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <FolderOpen className="w-4 h-4 text-muted-foreground" />
+                    <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Folders</h3>
+                  </div>
+                </motion.div>
+                <motion.div variants={fadeUp} className="flex flex-wrap gap-2">
+                  <motion.button
+                    whileHover={{ scale: 1.03 }}
+                    whileTap={{ scale: 0.97 }}
+                    onClick={() => setSelectedFolderId(null)}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-xl glass-card card-lift inner-glow group ${selectedFolderId === null ? 'border-[#6366f1]/50 bg-[#6366f1]/10' : ''}`}
+                  >
+                    <span className="text-sm font-medium">All</span>
+                  </motion.button>
+                  {folders.map((f) => (
+                    <motion.button
+                      key={f.id}
+                      whileHover={{ scale: 1.03 }}
+                      whileTap={{ scale: 0.97 }}
+                      onClick={() => setSelectedFolderId(f.id)}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-xl glass-card card-lift inner-glow group ${selectedFolderId === f.id ? 'border-[#6366f1]/50 bg-[#6366f1]/10' : ''}`}
+                    >
+                      <FolderOpen className={`w-3.5 h-3.5 ${selectedFolderId === f.id ? 'text-[#6366f1] fill-[#6366f1]' : 'text-muted-foreground'}`} />
+                      <span className="text-sm font-medium">{f.name}</span>
+                    </motion.button>
+                  ))}
+                </motion.div>
+              </motion.section>
+            )}
 
             {/* ── Workspaces ── */}
             {workspaces.length > 0 && (
@@ -703,9 +759,6 @@ export function Dashboard() {
                   recentTodos={recentTodos}
                   decryptedNotes={decryptedNotes}
                   decryptedTodos={decryptedTodos}
-                  setView={setView}
-                  selectNote={selectNote}
-                  selectTodo={selectTodo}
                   isEncryptedSession={isEncryptedSession}
                 />
                 </div>
@@ -795,38 +848,17 @@ export function Dashboard() {
               {/* Members */}
               {wsMembers.length > 0 && (
                 <div className="space-y-2">
-                  <Label className="text-xs font-medium">Members ({wsMembers.length})</Label>
-                  <div className="max-h-48 overflow-y-auto space-y-1.5">
-                    {wsMembers.map((member) => (
-                      <div key={member.id} className="flex items-center gap-3 p-2 rounded-lg bg-muted/40">
-                        <Avatar className="h-6 w-6">
-                          <AvatarFallback className="text-[9px] bg-[#059669]/10 text-[#059669] dark:bg-[#059669]/20 dark:text-[#34d399]">
-                            {getInitials(member.user.name)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-medium truncate">{member.user.name || member.user.email}</p>
-                          <p className="text-[10px] text-muted-foreground truncate">{member.user.email}</p>
-                        </div>
-                        <Badge variant={member.role === 'owner' ? 'default' : 'secondary'} className="text-[9px]">
-                          {member.role === 'owner' && <Crown className="w-2 h-2 mr-0.5" />}
-                          {member.role}
-                        </Badge>
-                        {member.role !== 'owner' && currentUser?.id !== member.userId && (
-                          <Button variant="ghost" size="icon" className="h-5 w-5 text-muted-foreground hover:text-destructive" onClick={() => handleRemoveMember(member.id)}>
-                            <Trash2 className="w-2.5 h-2.5" />
-                          </Button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
+                  <ManageMembersDialog 
+                    wsMembers={wsMembers} 
+                    onRemoveClick={(id, name) => handleRemoveMember(id)} 
+                  />
                 </div>
               )}
               <div className="flex gap-2">
                 <Button variant="outline" className="flex-1 rounded-xl" onClick={() => {
                   setWsDetailOpen(false)
                   const wsNotes = notes.filter((n) => n.workspaceId === selectedWs.id)
-                  if (wsNotes.length > 0) selectNote(wsNotes[0].id)
+                  if (wsNotes.length > 0) router.push(`/dashboard/notes/${wsNotes[0].id}`)
                   else toast.info('No notes in this workspace yet')
                 }}>
                   <Eye className="w-3.5 h-3.5 mr-1" /> Notes
@@ -834,7 +866,7 @@ export function Dashboard() {
                 <Button variant="outline" className="flex-1 rounded-xl" onClick={() => {
                   setWsDetailOpen(false)
                   const wsTodos = todoLists.filter((t) => t.workspaceId === selectedWs.id)
-                  if (wsTodos.length > 0) selectTodo(wsTodos[0].id)
+                  if (wsTodos.length > 0) router.push(`/dashboard/todos/${wsTodos[0].id}`)
                   else toast.info('No todo lists in this workspace yet')
                 }}>
                   <Eye className="w-3.5 h-3.5 mr-1" /> Todos
@@ -860,3 +892,4 @@ export function Dashboard() {
     </div>
   )
 }
+

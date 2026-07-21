@@ -6,6 +6,7 @@ import { useAppStore, type NoteItem, type TodoItemData } from '@/stores/app-stor
 import { decryptNoteTitle, decryptTodoTitle } from '@/lib/encrypted-api'
 import { supabase } from '@/lib/supabase'
 import { AppSidebar } from '@/components/shared/app-sidebar'
+import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -58,9 +59,10 @@ export function ArchiveView() {
   const setTodoLists = useAppStore((s) => s.setTodoLists)
   const removeNote = useAppStore((s) => s.removeNote)
   const removeTodoList = useAppStore((s) => s.removeTodoList)
-  const setView = useAppStore((s) => s.setView)
   const logout = useAppStore((s) => s.logout)
   const isEncryptedSession = useAppStore((s) => s.isEncryptedSession)
+  
+  const router = useRouter()
 
   const [isLoading, setIsLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
@@ -165,8 +167,8 @@ export function ArchiveView() {
   const globalSyncTrigger = useAppStore((s) => s.globalSyncTrigger)
 
   useEffect(() => {
-    if (!currentUser) setView('auth')
-  }, [currentUser, setView])
+    if (!currentUser) router.push('/auth')
+  }, [currentUser, router])
 
   // Also refresh active notes/todos list so restoring works correctly
   const refreshActiveData = useCallback(async () => {
@@ -321,7 +323,7 @@ export function ArchiveView() {
 
   return (
     <div className="min-h-screen flex bg-background">
-      <AppSidebar activeView="archive" />
+      <AppSidebar  />
 
       <div className="flex-1 flex flex-col min-w-0">
         {/* Header */}
@@ -626,3 +628,4 @@ export function ArchiveView() {
     </div>
   )
 }
+

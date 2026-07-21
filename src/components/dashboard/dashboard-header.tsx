@@ -5,6 +5,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { PenLine, ShieldCheck, ShieldAlert, Sun, Moon, Settings, Crown, LogOut } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 
 // Helper for initials
 function getInitials(name?: string | null) {
@@ -18,7 +19,6 @@ interface DashboardHeaderProps {
   setTheme: (theme: string) => void
   currentUser: { id: string; email: string; name: string | null; image?: string | null }
   userTier: string
-  setView: (view: any) => void
   logout: () => void
 }
 
@@ -28,9 +28,9 @@ export function DashboardHeader({
   setTheme,
   currentUser,
   userTier,
-  setView,
   logout
 }: DashboardHeaderProps) {
+  const router = useRouter()
   return (
     <header className="sticky top-0 z-40 flex items-center justify-between h-14 px-4 md:px-8 border-b border-border/40 bg-background/80 backdrop-blur-md">
       <div className="flex items-center gap-3 min-w-0">
@@ -94,13 +94,13 @@ export function DashboardHeader({
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => setView('settings')} className="cursor-pointer gap-2">
+            <DropdownMenuItem onClick={() => router.push('/dashboard/settings')} className="cursor-pointer gap-2">
               <Settings className="w-4 h-4 text-muted-foreground" />
-              <span>Profile Settings</span>
+              <span>Settings</span>
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setView('pricing')} className="cursor-pointer gap-2">
-              <Crown className="w-4 h-4 text-muted-foreground" />
-              <span>Upgrade / Pricing</span>
+            <DropdownMenuItem onClick={() => router.push('/dashboard/pricing')} className="cursor-pointer gap-2">
+              <Crown className="w-4 h-4 text-emerald-500" />
+              <span>Subscription</span>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={logout} className="cursor-pointer gap-2 text-destructive focus:text-destructive focus:bg-destructive/10">

@@ -22,17 +22,23 @@ import {
 import { toast } from 'sonner'
 import { AppSidebar } from '@/components/shared/app-sidebar'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
-import { ArrowLeft, Plus, Trash2, GripVertical, Loader2, Lock, ShieldCheck, ShieldAlert, Pin, Archive, ArchiveRestore, Share2, MoreVertical } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, GripVertical, Loader2, Lock, ShieldCheck, ShieldAlert, Pin, Archive, ArchiveRestore, Share2, MoreVertical, Calendar } from 'lucide-react'
+import { FolderPicker } from '@/components/shared/folder-picker'
+import { useParams, useRouter } from 'next/navigation'
 
 export function TodoList() {
   const currentUser = useAppStore((s) => s.currentUser)
-  const selectedTodoListId = useAppStore((s) => s.selectedTodoListId)
+  const params = useParams()
+  const router = useRouter()
+  const selectedTodoListId = params.id as string
   const todoLists = useAppStore((s) => s.todoLists)
   const updateTodoListItems = useAppStore((s) => s.updateTodoListItems)
   const updateTodoListTitle = useAppStore((s) => s.updateTodoListTitle)
-  const setView = useAppStore((s) => s.setView)
   const isEncryptedSession = useAppStore((s) => s.isEncryptedSession)
   const addTodoItem = useAppStore((s) => s.addTodoItem)
+  const activeCollaborators = useAppStore((s) => s.activeCollaborators)
+  const setTodoFolder = useAppStore((s) => s.setTodoFolder)
+  const setTodoDueDate = useAppStore((s) => s.setTodoDueDate)
 
   const [title, setTitle] = useState('')
   const [items, setItems] = useState<TodoItemChild[]>([])
@@ -42,6 +48,7 @@ export function TodoList() {
   const [draggedId, setDraggedId] = useState<string | null>(null)
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const lastLocalSaveTimeRef = useRef<number>(0)
+  const isTyping = useRef(false)
   const itemsRef = useRef(items)
   useEffect(() => {
     itemsRef.current = items
@@ -65,7 +72,7 @@ export function TodoList() {
 
         if (listError || !listData) {
           toast.error('Failed to load todo list')
-          setView('todos')
+          router.push('/dashboard/todos')
           return
         }
 
@@ -86,7 +93,7 @@ export function TodoList() {
         setItems(decryptedItems)
       } catch {
         toast.error('Network error')
-        setView('todos')
+        router.push('/dashboard/todos')
       }
       setInitialLoad(false)
     }
@@ -114,7 +121,7 @@ export function TodoList() {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [selectedTodoListId, setView])
+  }, [selectedTodoListId, router])
 
   // Calculate progress
   const completedCount = items.filter((i) => i.completed).length
@@ -313,6 +320,10 @@ export function TodoList() {
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const newTitle = e.target.value
       setTitle(newTitle)
+      if (!isTyping.current && selectedTodoListId) {
+        isTyping.current = true
+        supabase.channel(`room:todo-${selectedTodoListId}`).track({ userId: currentUser?.id, isTyping: true })
+      }
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
       saveTimeoutRef.current = setTimeout(async () => {
         if (!selectedTodoListId) return
@@ -331,9 +342,13 @@ export function TodoList() {
         } catch {
           toast.error('Failed to save title')
         }
+        if (isTyping.current && selectedTodoListId) {
+          isTyping.current = false
+          supabase.channel(`room:todo-${selectedTodoListId}`).track({ userId: currentUser?.id, isTyping: false })
+        }
       }, 1500)
     },
-    [selectedTodoListId, updateTodoListTitle]
+    [selectedTodoListId, updateTodoListTitle, todoList?.workspaceId, currentUser]
   )
 
   const [editingItemId, setEditingItemId] = useState<string | null>(null)
@@ -355,7 +370,7 @@ export function TodoList() {
       removeTodoList(selectedTodoListId)
       toast.success('Todo list deleted')
       setDeleteConfirmOpen(false)
-      setView('todos')
+      router.push('/dashboard/todos')
     } catch {
       toast.error('Failed to delete')
     }
@@ -399,7 +414,7 @@ export function TodoList() {
       if (newArchived) {
         const updated = todoLists.filter((t) => t.id !== selectedTodoListId)
         setTodoListsAction(updated)
-        setView('todos')
+        router.push('/dashboard/todos')
       } else {
         const updated = todoLists.map((t) => t.id === selectedTodoListId ? { ...t, isArchived: false } : t)
         setTodoListsAction(updated)
@@ -420,14 +435,14 @@ export function TodoList() {
   }
 
   useEffect(() => {
-    if (!todoList && !initialLoad) setView('todos')
-  }, [todoList, initialLoad, setView])
+    if (!todoList && !initialLoad) router.push('/dashboard/todos')
+  }, [todoList, initialLoad, router])
 
   if (!todoList && !initialLoad) return null
 
   return (
     <div className="min-h-screen flex bg-background">
-      <AppSidebar activeView="todo-list" />
+      <AppSidebar  />
 
       <div className="flex-1 flex flex-col min-w-0">
       {/* Header */}
@@ -437,7 +452,13 @@ export function TodoList() {
             <Button
               variant="ghost"
               size="icon"
-              onClick={() => setView('todos')}
+              onClick={() => {
+                if (isTyping.current && selectedTodoListId) {
+                  isTyping.current = false
+                  supabase.channel(`room:todo-${selectedTodoListId}`).track({ userId: currentUser?.id, isTyping: false })
+                }
+                router.push('/dashboard/todos')
+              }}
               className="shrink-0 h-8 w-8"
             >
               <ArrowLeft className="w-5 h-5" />
@@ -445,6 +466,25 @@ export function TodoList() {
           </motion.div>
 
           <Separator orientation="vertical" className="h-6 hidden sm:block" />
+
+          <div className="flex items-center gap-2">
+            {activeCollaborators.length > 0 && (
+              <div className="flex items-center mr-2">
+                {activeCollaborators.map((collaborator, index) => (
+                  <div key={collaborator.userId} className={`relative ${index > 0 ? '-ml-2' : ''} w-6 h-6 rounded-full border-2 border-background bg-primary flex items-center justify-center`}>
+                    {collaborator.avatar ? (
+                      <img src={collaborator.avatar} alt={collaborator.userName} className="w-full h-full rounded-full object-cover" />
+                    ) : (
+                      <span className="text-[10px] text-primary-foreground font-bold">{collaborator.userName.charAt(0).toUpperCase()}</span>
+                    )}
+                    {collaborator.isTyping && (
+                      <div className="absolute -bottom-1 -right-1 bg-green-500 w-2 h-2 rounded-full border-2 border-background" />
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
           <Input
             value={title}
@@ -455,6 +495,61 @@ export function TodoList() {
           />
 
           <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+            {/* Due Date Picker */}
+            {todoList?.id && (
+              <div className="relative flex items-center hidden sm:flex">
+                <Input
+                  type="date"
+                  value={todoList.dueDate || ''}
+                  onChange={(e) => {
+                    const val = e.target.value
+                    setTodoDueDate(todoList.id, val)
+                    supabase.from('todo_lists').update({ due_date: val || null }).eq('id', todoList.id)
+                  }}
+                  className="h-8 text-xs border-0 bg-transparent w-[130px] pl-8 focus-visible:ring-0 focus-visible:ring-offset-0 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                />
+                <Calendar className="w-4 h-4 text-muted-foreground absolute left-2 pointer-events-none" />
+              </div>
+            )}
+
+            {/* Folder Picker */}
+            {todoList?.id && (
+              <FolderPicker
+                selectedFolderId={todoList.folderId}
+                onSelect={async (folderId) => {
+                  setTodoFolder(todoList.id, folderId)
+                  if (!isTyping.current) {
+                    isTyping.current = true
+                    supabase.channel(`room:todo-${todoList.id}`).track({ userId: currentUser?.id, isTyping: true })
+                  }
+                  if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
+                  saveTimeoutRef.current = setTimeout(async () => {
+                    if (!selectedTodoListId) return
+                    try {
+                      // We don't need to re-encrypt the title just for the folder change in the current schema
+                      // Wait, we need to update the folderId on the server.
+                      // Let's add folder_id to the update.
+                      const encryptedTitle = await encryptTodoTitle(title, todoList?.workspaceId)
+                      const { error } = await supabase
+                        .from('todo_lists')
+                        .update({ folder_id: folderId || null, title: encryptedTitle })
+                        .eq('id', selectedTodoListId)
+
+                      if (error) {
+                        toast.error('Failed to save folder')
+                      }
+                    } catch {
+                      toast.error('Failed to save folder')
+                    }
+                    if (isTyping.current && selectedTodoListId) {
+                      isTyping.current = false
+                      supabase.channel(`room:todo-${selectedTodoListId}`).track({ userId: currentUser?.id, isTyping: false })
+                    }
+                  }, 1500)
+                }}
+              />
+            )}
+
             {/* Encryption indicator */}
             <TooltipProvider>
               <Tooltip>
@@ -658,16 +753,30 @@ export function TodoList() {
             <div className="flex items-center gap-2">
               <div className="w-5 h-5 rounded border-2 border-dashed border-muted-foreground/30 shrink-0" />
               <Input
-                value={newItemText}
-                onChange={(e) => setNewItemText(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault()
-                    handleAddItem()
-                  }
-                }}
-                placeholder="Add a new item..."
-                className="border-0 focus-visible:ring-0 text-sm bg-transparent"
+                    value={newItemText}
+                    onChange={(e) => {
+                      setNewItemText(e.target.value)
+                      if (!isTyping.current && selectedTodoListId) {
+                        isTyping.current = true
+                        supabase.channel(`room:todo-${selectedTodoListId}`).track({ userId: currentUser?.id, isTyping: true })
+                      }
+                    }}
+                    onBlur={() => {
+                      if (isTyping.current && selectedTodoListId) {
+                        isTyping.current = false
+                        supabase.channel(`room:todo-${selectedTodoListId}`).track({ userId: currentUser?.id, isTyping: false })
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !isLocked) {
+                        handleAddItem()
+                        if (isTyping.current && selectedTodoListId) {
+                          isTyping.current = false
+                          supabase.channel(`room:todo-${selectedTodoListId}`).track({ userId: currentUser?.id, isTyping: false })
+                        }
+                      }
+                    }}
+                    className="flex-1 bg-transparent border-0 focus-visible:ring-0 text-sm"
               />
               <Button
                 variant="ghost"

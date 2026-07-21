@@ -13,6 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from 'sonner'
 import { Sparkles, Loader2, ShieldCheck, PenTool, ArrowLeft, Mail, Eye, EyeOff, Moon, Sun } from 'lucide-react'
 import { useTheme } from 'next-themes'
+import { useRouter } from 'next/navigation'
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -74,6 +75,14 @@ export function AuthPage() {
   const setEncryptionKey = useAppStore((s) => s.setEncryptionKey)
   const { theme, setTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
+  const router = useRouter()
+  const currentUser = useAppStore((s) => s.currentUser)
+
+  useEffect(() => {
+    if (currentUser) {
+      router.push('/dashboard')
+    }
+  }, [currentUser, router])
 
   useEffect(() => {
     setMounted(true)
@@ -164,6 +173,7 @@ export function AuthPage() {
       }
 
       toast.success('Welcome back!')
+      router.push('/dashboard')
     } catch {
       toast.error('Network error. Please try again.')
     } finally {
@@ -246,6 +256,7 @@ export function AuthPage() {
 
       setEncryptionKey(masterKey, salt)
       toast.success('Account created successfully!')
+      router.push('/dashboard')
     } catch {
       toast.error('Network error. Please try again.')
     } finally {

@@ -7,6 +7,7 @@ import { encryptTodoTitle, decryptTodoTitle } from '@/lib/encrypted-api'
 import { supabase } from '@/lib/supabase'
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationPrevious, PaginationNext, PaginationEllipsis } from '@/components/ui/pagination'
 import { AppSidebar } from '@/components/shared/app-sidebar'
+import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -14,9 +15,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { toast } from 'sonner'
-import { Plus, CheckSquare, ShieldCheck, Loader2, PenLine, LogOut, Sun, Moon, Search } from 'lucide-react'
+import { Plus, CheckSquare, Clock, ShieldCheck, PenLine, LogOut, Sun, Moon, ListTodo, Search, Loader2, CalendarDays } from 'lucide-react'
 import { useTheme } from 'next-themes'
-import { formatDistanceToNow } from 'date-fns'
+import { formatDistanceToNow, format } from 'date-fns'
+import { getDueDateColor } from '@/lib/utils'
 
 const stagger = {
   hidden: {},
@@ -32,13 +34,13 @@ export function TodosList() {
   const currentUser = useAppStore((s) => s.currentUser)
   const todoLists = useAppStore((s) => s.todoLists)
   const workspaces = useAppStore((s) => s.workspaces)
-  const selectTodo = useAppStore((s) => s.selectTodo)
   const addTodoList = useAppStore((s) => s.addTodoList)
   const setTodoLists = useAppStore((s) => s.setTodoLists)
-  const setView = useAppStore((s) => s.setView)
-  const logout = useAppStore((s) => s.logout)
   const isEncryptedSession = useAppStore((s) => s.isEncryptedSession)
   const userTier = useAppStore((s) => s.userTier)
+  const logout = useAppStore((s) => s.logout)
+
+  const router = useRouter()
 
   const [isLoading, setIsLoading] = useState(true)
   const [createOpen, setCreateOpen] = useState(false)
@@ -117,10 +119,6 @@ export function TodosList() {
   }, [todoLists, isLoading])
 
   useEffect(() => {
-    if (!currentUser) setView('auth')
-  }, [currentUser, setView])
-
-  useEffect(() => {
     setPage(1)
   }, [searchQuery])
 
@@ -177,7 +175,7 @@ export function TodosList() {
       setCreateOpen(false)
       setNewTitle('')
       setNewWorkspace('')
-      selectTodo(formatted.id)
+      router.push(`/dashboard/todos/${formatted.id}`)
       toast.success('Todo list created')
     } catch {
       toast.error('Failed to create todo list')
@@ -217,7 +215,7 @@ export function TodosList() {
 
   return (
     <div className="min-h-screen flex bg-gradient-mesh-dash noise-overlay">
-      <AppSidebar activeView="todos" />
+      <AppSidebar  />
 
       <div className="flex-1 flex flex-col min-w-0">
         {/* Header */}
@@ -317,7 +315,7 @@ export function TodosList() {
                   return (
                     <motion.div key={todo.id} variants={fadeUp}>
                       <button
-                        onClick={() => selectTodo(todo.id)}
+                        onClick={() => router.push(`/dashboard/todos/${todo.id}`)}
                         className="w-full text-left rounded-xl glass-card card-lift inner-glow p-4 group"
                       >
                         <div className="flex items-start gap-3">
@@ -349,7 +347,14 @@ export function TodosList() {
                                   {ws.title}
                                 </span>
                               )}
+                              {todo.dueDate && (
+                                <span className={`inline-flex items-center gap-1 text-[10px] bg-muted/60 px-1.5 py-0.5 rounded-md ${getDueDateColor(todo.dueDate)}`}>
+                                  <CalendarDays className="w-2.5 h-2.5" />
+                                  {format(new Date(todo.dueDate), 'MMM d, yyyy')}
+                                </span>
+                              )}
                               <div className="flex items-center gap-1 text-muted-foreground/50">
+                                <Clock className="w-3 h-3" />
                                 <span className="text-[10px]">{formatDistanceToNow(new Date(todo.updatedAt), { addSuffix: true })}</span>
                               </div>
                             </div>

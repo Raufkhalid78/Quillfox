@@ -182,45 +182,29 @@ export function NotionEditor({ content, onChange, disabled }: NotionEditorProps)
         onChange={handleTextareaChange}
         onKeyDown={handleKeyDown}
         onSelect={handleSelect}
-        className={`w-full min-h-[60vh] resize-y rounded-xl border border-border/50 bg-card/50 p-6 text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all placeholder:text-muted-foreground/40 font-mono ${
-          userTier === 'free' ? 'blur-[1px] select-none pointer-events-none' : ''
-        }`}
+        className={`w-full min-h-[60vh] resize-y rounded-xl border border-border/50 bg-card/50 p-6 text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all placeholder:text-muted-foreground/40 font-mono`}
         placeholder={
           userTier !== 'free' 
             ? "Type '/' for Notion-Style slash commands...\nHighlight text to open the formatting bubble."
             : "Start writing..."
         }
-        disabled={disabled || userTier === 'free'}
+        disabled={disabled}
       />
 
-      {/* Free Tier Lock Screen */}
+      {/* Free Tier Banner */}
       {userTier === 'free' && (
-        <div className="absolute inset-0 flex items-center justify-center bg-background/25 rounded-xl backdrop-blur-[2px]">
-          <motion.div 
-            initial={{ scale: 0.95, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            className="max-w-md p-6 bg-card/95 border border-border/80 rounded-2xl shadow-xl flex flex-col items-center text-center space-y-4"
-          >
-            <div className="w-12 h-12 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
-              <Sparkles className="w-6 h-6" />
+        <div className="mb-4 p-3 bg-primary/10 border border-primary/20 rounded-xl flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-primary/20 text-primary flex items-center justify-center shrink-0">
+              <Sparkles className="w-4 h-4" />
             </div>
-            <div className="space-y-1">
-              <h3 className="font-bold text-base">Notion-Style Slash Commands</h3>
+            <div>
+              <h3 className="font-semibold text-sm">Notion-Style Slash Commands Locked</h3>
               <p className="text-xs text-muted-foreground">
-                Enhance your notes with H1-H3 headers, bullet/numbered lists, todo checklists, and quote boxes using intuitive Notion commands.
+                Upgrade to Premium to unlock '/' commands, formatting bubbles, and advanced blocks.
               </p>
             </div>
-            <Button 
-              size="sm" 
-              className="w-full bg-gradient-to-r from-primary to-purple-600 text-white rounded-lg text-xs"
-              onClick={() => {
-                setTier('premium')
-                toast.success('Premium Tier Simulated! Enjoy premium features.')
-              }}
-            >
-              Simulate Premium Tier
-            </Button>
-          </motion.div>
+          </div>
         </div>
       )}
 

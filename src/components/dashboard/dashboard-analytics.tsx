@@ -253,16 +253,6 @@ export function DashboardAnalytics() {
                 Gain deep insights into your productivity with interactive task graphs, note-to-todo ratios, and cryptographic activity grids.
               </p>
             </div>
-            <Button
-              size="sm"
-              className="w-full bg-gradient-to-r from-primary to-purple-600 text-white rounded-lg text-xs"
-              onClick={() => {
-                setTier('premium')
-                toast.success('Premium Tier Simulated! Enjoy analytics dashboard.')
-              }}
-            >
-              Simulate Premium Tier
-            </Button>
           </motion.div>
         </div>
       )}

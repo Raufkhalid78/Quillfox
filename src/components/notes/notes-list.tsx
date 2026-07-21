@@ -6,8 +6,9 @@ import { useAppStore } from '@/stores/app-store'
 import { encryptNoteTitle, decryptNoteTitle, decryptNoteContent } from '@/lib/encrypted-api'
 import { supabase } from '@/lib/supabase'
 import { logActivity } from '@/lib/activity'
-import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationPrevious, PaginationNext, PaginationEllipsis } from '@/components/ui/pagination'
+import { Virtuoso } from 'react-virtuoso'
 import { AppSidebar } from '@/components/shared/app-sidebar'
+import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -15,9 +16,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { toast } from 'sonner'
-import { Plus, FileText, Clock, ShieldCheck, PenLine, LogOut, Sun, Moon, StickyNote, Search, Loader2 } from 'lucide-react'
+import { Plus, FileText, Clock, ShieldCheck, PenLine, LogOut, Sun, Moon, StickyNote, Search, Loader2, CalendarDays } from 'lucide-react'
 import { useTheme } from 'next-themes'
-import { formatDistanceToNow } from 'date-fns'
+import { formatDistanceToNow, format } from 'date-fns'
+import { getDueDateColor } from '@/lib/utils'
 
 const stagger = {
   hidden: {},
@@ -33,13 +35,13 @@ export function NotesList() {
   const currentUser = useAppStore((s) => s.currentUser)
   const notes = useAppStore((s) => s.notes)
   const workspaces = useAppStore((s) => s.workspaces)
-  const selectNote = useAppStore((s) => s.selectNote)
   const addNote = useAppStore((s) => s.addNote)
   const setNotes = useAppStore((s) => s.setNotes)
-  const setView = useAppStore((s) => s.setView)
-  const logout = useAppStore((s) => s.logout)
   const isEncryptedSession = useAppStore((s) => s.isEncryptedSession)
   const userTier = useAppStore((s) => s.userTier)
+  const logout = useAppStore((s) => s.logout)
+  
+  const router = useRouter()
 
   const [isLoading, setIsLoading] = useState(true)
   const [createOpen, setCreateOpen] = useState(false)
@@ -47,8 +49,6 @@ export function NotesList() {
   const [newWorkspace, setNewWorkspace] = useState<string>('')
   const [isCreating, setIsCreating] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
-  const [page, setPage] = useState(1)
-  const PAGE_SIZE = 12
   const { theme, setTheme } = useTheme()
   const contentRef = useRef<HTMLDivElement>(null)
 
@@ -98,44 +98,46 @@ export function NotesList() {
   }, [currentUser, globalSyncTrigger, setNotes])
 
   useEffect(() => {
+    let isActive = true
     const decryptData = async () => {
       const currentMap = decryptedNotesRef.current
       const noteMap = new Map(currentMap)
-      let changed = false
-
-      await Promise.all(
-        notes.map(async (n) => {
-          const existing = noteMap.get(n.id)
-          if (existing && existing.updatedAt === n.updatedAt) return
-
-          const title = await decryptNoteTitle(n.title, n.workspaceId)
-          const decryptedContent = await decryptNoteContent(n.content, n.workspaceId)
-          const preview = decryptedContent.substring(0, 120)
-          noteMap.set(n.id, { title, preview: preview || 'Empty note...', updatedAt: n.updatedAt })
-          changed = true
-        })
-      )
-
-      if (changed) {
-        decryptedNotesRef.current = noteMap
-        setDecryptedNotes(noteMap)
+      
+      const unencryptedNotes = notes.filter(n => {
+        const existing = noteMap.get(n.id)
+        return !existing || existing.updatedAt !== n.updatedAt
+      })
+      
+      if (unencryptedNotes.length === 0) return
+      
+      const chunkSize = 10
+      for (let i = 0; i < unencryptedNotes.length; i += chunkSize) {
+        if (!isActive) break
+        const chunk = unencryptedNotes.slice(i, i + chunkSize)
+        let changed = false
+        
+        await Promise.all(
+          chunk.map(async (n) => {
+            const title = await decryptNoteTitle(n.title, n.workspaceId)
+            const decryptedContent = await decryptNoteContent(n.content, n.workspaceId)
+            const preview = decryptedContent.substring(0, 120)
+            noteMap.set(n.id, { title, preview: preview || 'Empty note...', updatedAt: n.updatedAt })
+            changed = true
+          })
+        )
+        
+        if (changed && isActive) {
+          decryptedNotesRef.current = noteMap
+          setDecryptedNotes(new Map(noteMap))
+        }
+        
+        await new Promise(resolve => setTimeout(resolve, 0))
       }
     }
+    
     if (!isLoading) decryptData()
+    return () => { isActive = false }
   }, [notes, isLoading])
-
-  useEffect(() => {
-    if (!currentUser) setView('auth')
-  }, [currentUser, setView])
-
-  useEffect(() => {
-    setPage(1)
-  }, [searchQuery])
-
-  const handlePageChange = useCallback((newPage: number) => {
-    setPage(newPage)
-    contentRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
-  }, [])
 
   const handleCreate = async () => {
     if (!currentUser || isCreating) return
@@ -186,7 +188,7 @@ export function NotesList() {
       setCreateOpen(false)
       setNewTitle('')
       setNewWorkspace('')
-      selectNote(formatted.id)
+      router.push(`/dashboard/notes/${formatted.id}`)
       toast.success('Note created')
     } catch {
       toast.error('Failed to create note')
@@ -210,23 +212,11 @@ export function NotesList() {
       })
     : activeNotes
 
-  const totalPages = Math.ceil(filteredNotes.length / PAGE_SIZE)
-
-  useEffect(() => {
-    if (page > totalPages && totalPages > 0) {
-      setPage(totalPages)
-    }
-  }, [filteredNotes.length, totalPages, page])
-
   if (!currentUser) return null
-
-  const paginatedNotes = filteredNotes.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
-  const paginationStart = (page - 1) * PAGE_SIZE + 1
-  const paginationEnd = Math.min(page * PAGE_SIZE, filteredNotes.length)
 
   return (
     <div className="min-h-screen flex bg-gradient-mesh-dash noise-overlay">
-      <AppSidebar activeView="notes" />
+      <AppSidebar  />
 
       <div className="flex-1 flex flex-col min-w-0">
         {/* Header */}
@@ -316,99 +306,56 @@ export function NotesList() {
               </motion.div>
             ) : (
               <>
-              <motion.div initial="hidden" animate="visible" variants={stagger} className="space-y-2">
-                {paginatedNotes.map((note) => {
-                  const decrypted = decryptedNotes.get(note.id)
-                  const ws = workspaces.find((w) => w.id === note.workspaceId)
-                  return (
-                    <motion.div key={note.id} variants={fadeUp}>
-                      <button
-                        onClick={() => selectNote(note.id)}
-                        className="w-full text-left rounded-xl glass-card card-lift inner-glow p-4 group"
-                      >
-                        <div className="flex items-start gap-3">
-                          <div className="mt-0.5 w-9 h-9 rounded-lg bg-[#059669]/8 dark:bg-[#059669]/15 flex items-center justify-center shrink-0">
-                            <FileText className="w-4 h-4 text-[#059669]/70 dark:text-[#34d399]/70" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-0.5">
-                              <p className="text-sm font-medium line-clamp-1">{decrypted?.title || note.title}</p>
-                              {isEncryptedSession && <ShieldCheck className="w-3 h-3 text-[#059669]/50 shrink-0" />}
-                              {note.isPinned && <span className="text-[10px] text-muted-foreground">📌</span>}
+              <div className="h-[calc(100vh-140px)]">
+                <Virtuoso
+                  style={{ height: '100%' }}
+                  data={filteredNotes}
+                  itemContent={(index, note) => {
+                    const decrypted = decryptedNotes.get(note.id)
+                    const ws = workspaces.find((w) => w.id === note.workspaceId)
+                    return (
+                      <div className="pb-2">
+                        <button
+                          onClick={() => router.push(`/dashboard/notes/${note.id}`)}
+                          className="w-full text-left rounded-xl glass-card card-lift inner-glow p-4 group"
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className="mt-0.5 w-9 h-9 rounded-lg bg-[#059669]/8 dark:bg-[#059669]/15 flex items-center justify-center shrink-0">
+                              <FileText className="w-4 h-4 text-[#059669]/70 dark:text-[#34d399]/70" />
                             </div>
-                            <p className="text-xs text-muted-foreground line-clamp-2">{decrypted?.preview || 'Empty note...'}</p>
-                            <div className="flex items-center gap-2 mt-2">
-                              {ws && (
-                                <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground bg-muted/60 px-1.5 py-0.5 rounded-md">
-                                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: ws.color }} />
-                                  {ws.title}
-                                </span>
-                              )}
-                              <div className="flex items-center gap-1 text-muted-foreground/50">
-                                <Clock className="w-3 h-3" />
-                                <span className="text-[10px]">{formatDistanceToNow(new Date(note.updatedAt), { addSuffix: true })}</span>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-0.5">
+                                <p className="text-sm font-medium line-clamp-1">{decrypted?.title || note.title}</p>
+                                {isEncryptedSession && <ShieldCheck className="w-3 h-3 text-[#059669]/50 shrink-0" />}
+                                {note.isPinned && <span className="text-[10px] text-muted-foreground">📌</span>}
+                              </div>
+                              <p className="text-xs text-muted-foreground line-clamp-2">{decrypted?.preview || 'Empty note...'}</p>
+                              <div className="flex items-center gap-2 mt-2">
+                                {ws && (
+                                  <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground bg-muted/60 px-1.5 py-0.5 rounded-md">
+                                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: ws.color }} />
+                                    {ws.title}
+                                  </span>
+                                )}
+                                {note.dueDate && (
+                                  <span className={`inline-flex items-center gap-1 text-[10px] bg-muted/60 px-1.5 py-0.5 rounded-md ${getDueDateColor(note.dueDate)}`}>
+                                    <CalendarDays className="w-2.5 h-2.5" />
+                                    {format(new Date(note.dueDate), 'MMM d, yyyy')}
+                                  </span>
+                                )}
+                                <div className="flex items-center gap-1 text-muted-foreground/50">
+                                  <Clock className="w-3 h-3" />
+                                  <span className="text-[10px]">{formatDistanceToNow(new Date(note.updatedAt), { addSuffix: true })}</span>
+                                </div>
                               </div>
                             </div>
                           </div>
-                        </div>
-                      </button>
-                    </motion.div>
-                  )
-                })}
-              </motion.div>
-              {totalPages > 1 && (
-                <div className="mt-6 flex flex-col items-center gap-3">
-                  <p className="text-xs text-muted-foreground">
-                    Showing {paginationStart}–{paginationEnd} of {filteredNotes.length}
-                  </p>
-                  <Pagination>
-                    <PaginationContent>
-                      <PaginationItem>
-                        <PaginationPrevious
-                          onClick={() => page > 1 && handlePageChange(page - 1)}
-                          className={page <= 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
-                        />
-                      </PaginationItem>
-                      {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => {
-                        if (totalPages <= 7 || p === 1 || p === totalPages || Math.abs(p - page) <= 1) {
-                          return (
-                            <PaginationItem key={p}>
-                              <PaginationLink
-                                isActive={p === page}
-                                onClick={() => handlePageChange(p)}
-                                className="cursor-pointer"
-                              >
-                                {p}
-                              </PaginationLink>
-                            </PaginationItem>
-                          )
-                        }
-                        if (p === 2 && page > 4) {
-                          return (
-                            <PaginationItem key={`ellipsis-start-${p}`}>
-                              <PaginationEllipsis />
-                            </PaginationItem>
-                          )
-                        }
-                        if (p === totalPages - 1 && page < totalPages - 3) {
-                          return (
-                            <PaginationItem key={`ellipsis-end-${p}`}>
-                              <PaginationEllipsis />
-                            </PaginationItem>
-                          )
-                        }
-                        return null
-                      })}
-                      <PaginationItem>
-                        <PaginationNext
-                          onClick={() => page < totalPages && handlePageChange(page + 1)}
-                          className={page >= totalPages ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
-                        />
-                      </PaginationItem>
-                    </PaginationContent>
-                  </Pagination>
-                </div>
-              )}
+                        </button>
+                      </div>
+                    )
+                  }}
+                />
+              </div>
               </>
             )}
           </div>

@@ -2,8 +2,10 @@ import React from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { FileText, StickyNote, ListTodo, CheckSquare, ChevronRight, Clock, ShieldCheck } from 'lucide-react'
-import { formatDistanceToNow } from 'date-fns'
+import { FileText, StickyNote, ListTodo, CheckSquare, ChevronRight, Clock, ShieldCheck, CalendarDays } from 'lucide-react'
+import { formatDistanceToNow, format } from 'date-fns'
+import { getDueDateColor } from '@/lib/utils'
+import { useRouter } from 'next/navigation'
 
 const fadeUp: any = {
   hidden: { opacity: 0, y: 20 },
@@ -17,9 +19,6 @@ interface DashboardRecentItemsProps {
   recentTodos: any[]
   decryptedNotes: Map<string, { title: string; preview: string; updatedAt: string }>
   decryptedTodos: Map<string, { title: string; updatedAt: string }>
-  setView: (view: any) => void
-  selectNote: (id: string) => void
-  selectTodo: (id: string) => void
   isEncryptedSession: boolean
 }
 
@@ -30,29 +29,24 @@ export function DashboardRecentItems({
   recentTodos,
   decryptedNotes,
   decryptedTodos,
-  setView,
-  selectNote,
-  selectTodo,
   isEncryptedSession
 }: DashboardRecentItemsProps) {
+  const router = useRouter()
+
   return (
     <motion.div variants={fadeUp}>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
         {/* Recent Notes Column */}
         <section>
           <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <div className="p-1.5 rounded-lg bg-[#059669]/10 text-[#059669] dark:bg-[#059669]/20 dark:text-[#34d399]">
-                <FileText className="w-3.5 h-3.5" />
-              </div>
-              <h3 className="text-sm font-semibold">Notes</h3>
-              <Badge variant="secondary" className="text-[10px] font-normal">{totalNotes}</Badge>
-            </div>
-            {totalNotes > 4 && (
-              <Button variant="ghost" size="sm" className="text-xs text-muted-foreground h-7 gap-1" onClick={() => setView('notes')}>
-                View all <ChevronRight className="w-3 h-3" />
-              </Button>
-            )}
+            <h3 className="text-sm font-medium flex items-center gap-2">
+              <FileText className="w-4 h-4 text-indigo-500" />
+              Recent Notes
+            </h3>
+            <Button variant="ghost" size="sm" className="text-xs text-muted-foreground h-7 gap-1" onClick={() => router.push('/dashboard/notes')}>
+              View all {totalNotes > 0 && `(${totalNotes})`}
+              <ChevronRight className="w-3 h-3" />
+            </Button>
           </div>
 
           {recentNotes.length === 0 ? (
@@ -74,7 +68,7 @@ export function DashboardRecentItems({
                       transition={{ delay: index * 0.06, duration: 0.3 }}
                     >
                       <button
-                        onClick={() => selectNote(note.id)}
+                        onClick={() => router.push(`/dashboard/notes/${note.id}`)}
                         className="w-full text-left rounded-xl border border-border/40 bg-card/40 hover:bg-card/70 hover:border-border/70 transition-all duration-200 p-3.5 group"
                       >
                         <div className="flex items-start gap-3">
@@ -87,9 +81,17 @@ export function DashboardRecentItems({
                               {isEncryptedSession && <ShieldCheck className="w-3 h-3 text-[#059669]/50 shrink-0" />}
                             </div>
                             <p className="text-xs text-muted-foreground line-clamp-1">{decrypted?.preview || 'Empty note...'}</p>
-                            <div className="flex items-center gap-1.5 shrink-0 text-muted-foreground/50 mt-1">
-                              <Clock className="w-3 h-3" />
-                              <span className="text-[10px]">{formatDistanceToNow(new Date(note.updatedAt), { addSuffix: true })}</span>
+                            <div className="flex items-center gap-2 mt-1">
+                              {note.dueDate && (
+                                <div className={`flex items-center gap-1 shrink-0 ${getDueDateColor(note.dueDate)}`}>
+                                  <CalendarDays className="w-3 h-3" />
+                                  <span className="text-[10px]">{format(new Date(note.dueDate), 'MMM d, yyyy')}</span>
+                                </div>
+                              )}
+                              <div className="flex items-center gap-1.5 shrink-0 text-muted-foreground/50">
+                                <Clock className="w-3 h-3" />
+                                <span className="text-[10px]">{formatDistanceToNow(new Date(note.updatedAt), { addSuffix: true })}</span>
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -105,18 +107,14 @@ export function DashboardRecentItems({
         {/* Recent Todos Column */}
         <section>
           <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <div className="p-1.5 rounded-lg bg-[#d97706]/10 text-[#d97706] dark:bg-[#d97706]/20 dark:text-[#fbbf24]">
-                <ListTodo className="w-3.5 h-3.5" />
-              </div>
-              <h3 className="text-sm font-semibold">Todo Lists</h3>
-              <Badge variant="secondary" className="text-[10px] font-normal">{totalTodos}</Badge>
-            </div>
-            {totalTodos > 4 && (
-              <Button variant="ghost" size="sm" className="text-xs text-muted-foreground h-7 gap-1" onClick={() => setView('todos')}>
-                View all <ChevronRight className="w-3 h-3" />
-              </Button>
-            )}
+            <h3 className="text-sm font-medium flex items-center gap-2">
+              <ListTodo className="w-4 h-4 text-rose-500" />
+              Recent Todos
+            </h3>
+            <Button variant="ghost" size="sm" className="text-xs text-muted-foreground h-7 gap-1" onClick={() => router.push('/dashboard/todos')}>
+              View all {totalTodos > 0 && `(${totalTodos})`}
+              <ChevronRight className="w-3 h-3" />
+            </Button>
           </div>
 
           {recentTodos.length === 0 ? (
@@ -141,7 +139,7 @@ export function DashboardRecentItems({
                       transition={{ delay: index * 0.06, duration: 0.3 }}
                     >
                       <button
-                        onClick={() => selectTodo(todo.id)}
+                        onClick={() => router.push(`/dashboard/todos/${todo.id}`)}
                         className="w-full text-left rounded-xl border border-border/40 bg-card/40 hover:bg-card/70 hover:border-border/70 transition-all duration-200 p-3.5 group"
                       >
                         <div className="flex items-start gap-3">
@@ -165,9 +163,17 @@ export function DashboardRecentItems({
                               <span className="text-[10px] font-medium text-muted-foreground tabular-nums shrink-0">{completed}/{total}</span>
                               <span className="text-[10px] font-semibold text-[#d97706] dark:text-[#fbbf24] tabular-nums shrink-0">{Math.round(progress)}%</span>
                             </div>
-                            <div className="flex items-center gap-1.5 shrink-0 text-muted-foreground/50 mt-0.5">
-                              <Clock className="w-3 h-3" />
-                              <span className="text-[10px]">{formatDistanceToNow(new Date(todo.updatedAt), { addSuffix: true })}</span>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              {todo.dueDate && (
+                                <div className={`flex items-center gap-1 shrink-0 ${getDueDateColor(todo.dueDate)}`}>
+                                  <CalendarDays className="w-3 h-3" />
+                                  <span className="text-[10px]">{format(new Date(todo.dueDate), 'MMM d, yyyy')}</span>
+                                </div>
+                              )}
+                              <div className="flex items-center gap-1.5 shrink-0 text-muted-foreground/50">
+                                <Clock className="w-3 h-3" />
+                                <span className="text-[10px]">{formatDistanceToNow(new Date(todo.updatedAt), { addSuffix: true })}</span>
+                              </div>
                             </div>
                           </div>
                         </div>

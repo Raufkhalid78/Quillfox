@@ -5,6 +5,7 @@ import { motion } from 'framer-motion'
 import { useAppStore } from '@/stores/app-store'
 import { supabase } from '@/lib/supabase'
 import { AppSidebar } from '@/components/shared/app-sidebar'
+import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -65,10 +66,12 @@ const stagger = {
 
 export function SettingsView() {
   const currentUser = useAppStore((s) => s.currentUser)
-  const setView = useAppStore((s) => s.setView)
   const logout = useAppStore((s) => s.logout)
   const updateUserName = useAppStore((s) => s.updateUserName)
   const isEncryptedSession = useAppStore((s) => s.isEncryptedSession)
+  const clearEncryption = useAppStore((s) => s.clearEncryption)
+  
+  const router = useRouter()
   const userTier = useAppStore((s) => s.userTier)
   const setTier = useAppStore((s) => s.setTier)
   const vaultAutoLock = useAppStore((s) => s.vaultAutoLock)
@@ -112,8 +115,8 @@ export function SettingsView() {
   const [isDeleting, setIsDeleting] = useState(false)
 
   useEffect(() => {
-    if (!currentUser) setView('auth')
-  }, [currentUser, setView])
+    if (!currentUser) router.push('/auth')
+  }, [currentUser, router])
 
   useEffect(() => {
     if (currentUser?.name) {
@@ -488,7 +491,7 @@ export function SettingsView() {
 
   return (
     <div className="min-h-screen flex bg-background">
-      <AppSidebar activeView="settings" />
+      <AppSidebar  />
 
       <div className="flex-1 flex flex-col min-w-0">
         {/* Header */}
@@ -1131,3 +1134,4 @@ export function SettingsView() {
     </div>
   )
 }
+

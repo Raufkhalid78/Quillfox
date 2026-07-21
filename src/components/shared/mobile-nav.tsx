@@ -25,6 +25,8 @@ import {
 } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import * as React from 'react'
+import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 
 const navItems = [
   { key: 'dashboard', view: 'dashboard' as const, icon: Home, label: 'Dashboard' },
@@ -37,38 +39,27 @@ const navItems = [
 
 export function MobileNav() {
   const [open, setOpen] = React.useState(false)
-  const currentView = useAppStore((s) => s.currentView)
-  const setView = useAppStore((s) => s.setView)
   const logout = useAppStore((s) => s.logout)
   const userTier = useAppStore((s) => s.userTier)
   const { theme, setTheme } = useTheme()
+  const pathname = usePathname()
 
-  // Don't render on mobile when user is on auth view
-  if (currentView === 'auth') return null
+  // Don't render on mobile when user is on auth view (root route)
+  if (pathname === '/') return null
 
   const isActive = (key: string) => {
-    if (key === 'dashboard') return currentView === 'dashboard'
-    if (key === 'notes') return currentView === 'notes' || currentView === 'note-editor'
-    if (key === 'todos') return currentView === 'todos' || currentView === 'todo-list'
-    if (key === 'workspaces') return currentView === 'workspaces'
-    if (key === 'archive') return currentView === 'archive'
-    if (key === 'settings') return currentView === 'settings'
+    if (key === 'dashboard') return pathname === '/dashboard'
+    if (key === 'notes') return pathname.startsWith('/dashboard/notes')
+    if (key === 'todos') return pathname.startsWith('/dashboard/todos')
+    if (key === 'workspaces') return pathname.startsWith('/dashboard/workspaces')
+    if (key === 'archive') return pathname.startsWith('/dashboard/archive')
+    if (key === 'settings') return pathname.startsWith('/dashboard/settings')
     return false
   }
 
-  const handleNavClick = (key: string) => {
-    if (key === 'dashboard') setView('dashboard')
-    else if (key === 'notes') setView('notes')
-    else if (key === 'todos') setView('todos')
-    else if (key === 'workspaces') setView('workspaces')
-    else if (key === 'archive') setView('archive')
-    else if (key === 'settings') setView('settings')
-    setOpen(false)
-  }
-
-  const handlePricingClick = () => {
-    setView('pricing')
-    setOpen(false)
+  const getHref = (key: string) => {
+    if (key === 'dashboard') return '/dashboard'
+    return `/dashboard/${key}`
   }
 
   const handleThemeToggle = () => {
@@ -105,9 +96,10 @@ export function MobileNav() {
           {/* Navigation links */}
           <nav className="flex flex-col gap-1 px-4 pb-4">
             {navItems.map((item) => (
-              <button
+              <Link
                 key={item.key}
-                onClick={() => handleNavClick(item.key)}
+                href={getHref(item.key)}
+                onClick={() => setOpen(false)}
                 className={`flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-colors w-full ${
                   isActive(item.key)
                     ? 'bg-primary/10 text-primary'
@@ -116,22 +108,23 @@ export function MobileNav() {
               >
                 <item.icon className="h-5 w-5 shrink-0" />
                 <span className="font-medium">{item.label}</span>
-              </button>
+              </Link>
             ))}
 
             {/* Pricing */}
             {userTier === 'free' && (
-              <button
-                onClick={handlePricingClick}
+              <Link
+                href="/dashboard/pricing"
+                onClick={() => setOpen(false)}
                 className={`flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-colors w-full ${
-                  currentView === 'pricing'
+                  pathname === '/dashboard/pricing'
                     ? 'bg-[#d97706]/10 text-[#d97706]'
                     : 'text-muted-foreground hover:text-foreground hover:bg-accent'
                 }`}
               >
                 <Crown className="h-5 w-5 shrink-0" />
                 <span className="font-medium">Pricing</span>
-              </button>
+              </Link>
             )}
           </nav>
 

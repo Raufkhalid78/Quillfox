@@ -5,6 +5,7 @@ import { motion } from 'framer-motion'
 import { useAppStore } from '@/stores/app-store'
 import { supabase } from '@/lib/supabase'
 import { AppSidebar } from '@/components/shared/app-sidebar'
+import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
@@ -153,8 +154,8 @@ const plans: Plan[] = [
 
 export function PricingView() {
   const currentUser = useAppStore((s) => s.currentUser)
-  const setView = useAppStore((s) => s.setView)
   const logout = useAppStore((s) => s.logout)
+  const router = useRouter()
   const isEncryptedSession = useAppStore((s) => s.isEncryptedSession)
   const setTier = useAppStore((s) => s.setTier)
   const userTier = useAppStore((s) => s.userTier)
@@ -166,8 +167,8 @@ export function PricingView() {
   const [annualToggle, setAnnualToggle] = useState(false)
 
   useEffect(() => {
-    if (!currentUser) setView('auth')
-  }, [currentUser, setView])
+    if (!currentUser) router.push('/auth')
+  }, [currentUser, router])
 
   const handleSelectPlan = (plan: Plan) => {
     if (plan.id === userTier) {
@@ -181,42 +182,50 @@ export function PricingView() {
   const handleConfirmUpgrade = async () => {
     if (!currentUser || !selectedPlan) return
     setIsProcessing(true)
-    // Simulate payment processing
-    await new Promise((resolve) => setTimeout(resolve, 1500))
+    
+    if (selectedPlan.id === 'free') {
+      // Downgrading to free can be handled locally or via API
+      try {
+        const { error } = await supabase
+          .from('profiles')
+          .update({ tier: 'free', trial_ends_at: null })
+          .eq('id', currentUser.id)
+        if (error) throw error
+        setTier('free')
+        toast.success('Successfully downgraded to Free plan')
+        setBillingOpen(false)
+      } catch (err) {
+        toast.error('Failed to downgrade plan')
+      } finally {
+        setIsProcessing(false)
+      }
+      return
+    }
+
     try {
-      // 14 days trial for paid plans, null for free
-      const trialEndsAt = selectedPlan.id === 'free' 
-        ? null 
-        : new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
+      const response = await fetch('/api/safepay/checkout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ tier: selectedPlan.id, userId: currentUser.id }),
+      })
 
-      const { error } = await supabase
-        .from('profiles')
-        .update({ 
-          tier: selectedPlan.id,
-          trial_ends_at: trialEndsAt
-        })
-        .eq('id', currentUser.id)
+      const data = await response.json()
 
-      if (error) {
-        console.warn("DB update failed, using local simulation:", error.message)
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to initialize checkout')
       }
-      setTier(selectedPlan.id as 'free' | 'premium' | 'ultra')
-      
-      if (selectedPlan.id === 'free') {
-        toast.success('Subscription downgraded to Free plan!')
+
+      if (data.url) {
+        // Redirect to Safepay hosted checkout
+        window.location.href = data.url
       } else {
-        toast.success(`${selectedPlan.name} plan activated!`)
+        throw new Error('No checkout URL returned')
       }
-    } catch {
-      setTier(selectedPlan.id as 'free' | 'premium' | 'ultra')
-      if (selectedPlan.id === 'free') {
-        toast.success('Subscription downgraded to Free plan! (local simulation)')
-      } else {
-        toast.success(`${selectedPlan.name} plan activated! (local simulation)`)
-      }
-    } finally {
+    } catch (err: any) {
+      toast.error(err.message || 'Payment initiation failed')
       setIsProcessing(false)
-      setBillingOpen(false)
     }
   }
 
@@ -230,7 +239,7 @@ export function PricingView() {
 
   return (
     <div className="min-h-screen flex bg-background">
-      <AppSidebar activeView="pricing" />
+      <AppSidebar  />
 
       <div className="flex-1 flex flex-col min-w-0">
         {/* Header */}
@@ -239,7 +248,7 @@ export function PricingView() {
             <Button
               variant="ghost"
               size="icon"
-              onClick={() => setView('dashboard')}
+              onClick={() => router.push('/dashboard')}
               className="shrink-0 h-8 w-8"
             >
               <ArrowLeft className="w-4 h-4" />
@@ -547,3 +556,4 @@ export function PricingView() {
     </div>
   )
 }
+

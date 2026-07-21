@@ -10,6 +10,7 @@ import { logActivity } from '@/lib/activity'
 import { encryptNoteTitle, encryptTodoTitle, encryptWorkspaceTitle, encryptWorkspaceDescription } from '@/lib/encrypted-api'
 import type { WorkspaceData, NoteItem, TodoItemData } from '@/stores/app-store'
 import { useAppStore } from '@/stores/app-store'
+import { useRouter } from 'next/navigation'
 
 interface DashboardQuickActionsProps {
   currentUser: { id: string } | null
@@ -21,8 +22,6 @@ interface DashboardQuickActionsProps {
   addNote: (note: NoteItem) => void
   addTodoList: (todoList: TodoItemData) => void
   setWorkspacesAction: (workspaces: WorkspaceData[]) => void
-  selectNote: (id: string) => void
-  selectTodo: (id: string) => void
 }
 
 const workspaceColors = [
@@ -42,10 +41,9 @@ export function DashboardQuickActions({
   theme,
   addNote,
   addTodoList,
-  setWorkspacesAction,
-  selectNote,
-  selectTodo
+  setWorkspacesAction
 }: DashboardQuickActionsProps) {
+  const router = useRouter()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [newNoteTitle, setNewNoteTitle] = useState('')
   const [newNoteWorkspace, setNewNoteWorkspace] = useState<string>('')
@@ -106,7 +104,7 @@ export function DashboardQuickActions({
       setDialogOpen(false)
       setNewNoteTitle('')
       setNewNoteWorkspace('')
-      selectNote(formatted.id)
+      router.push(`/dashboard/notes/${formatted.id}`)
       toast.success('Note created')
     } catch {
       toast.error('Failed to create note')
@@ -164,7 +162,7 @@ export function DashboardQuickActions({
       setDialogOpen(false)
       setNewTodoTitle('')
       setNewTodoWorkspace('')
-      selectTodo(formatted.id)
+      router.push(`/dashboard/todos/${formatted.id}`)
       toast.success('Todo list created')
     } catch {
       toast.error('Failed to create todo list')
