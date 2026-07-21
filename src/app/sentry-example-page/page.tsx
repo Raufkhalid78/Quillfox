@@ -27,7 +27,10 @@ export default function Page() {
           <Button
             variant="destructive"
             onClick={() => {
-              throw new Error("Sentry Test Error from Quillfox Website!");
+              import('@sentry/nextjs').then((Sentry) => {
+                Sentry.captureException(new Error("Sentry Test Error from Quillfox Website!"));
+                alert("Error sent to Sentry! Check your dashboard.");
+              });
             }}
           >
             Throw Test Error
