@@ -27,10 +27,8 @@ export default function Page() {
           <Button
             variant="destructive"
             onClick={() => {
-              import('@sentry/nextjs').then((Sentry) => {
-                Sentry.captureException(new Error("Sentry Test Error from Quillfox Website!"));
-                alert("Error sent to Sentry! Check your dashboard.");
-              });
+              // @ts-ignore - explicitly calling an undefined function to trigger an error
+              myUndefinedFunction();
             }}
           >
             Throw Test Error
