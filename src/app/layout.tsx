@@ -5,6 +5,8 @@ import "@mdxeditor/editor/style.css";
 import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "sonner"
 
+import { SentryProvider } from "@/components/sentry-provider"
+
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
@@ -40,15 +42,17 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}
       >
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="system"
-          enableSystem
-          disableTransitionOnChange
-        >
-          {children}
-          <Toaster position="bottom-right" theme="system" richColors />
-        </ThemeProvider>
+        <SentryProvider>
+          <ThemeProvider
+            attribute="class"
+            defaultTheme="system"
+            enableSystem
+            disableTransitionOnChange
+          >
+            {children}
+            <Toaster position="bottom-right" theme="system" richColors />
+          </ThemeProvider>
+        </SentryProvider>
       </body>
     </html>
   );
