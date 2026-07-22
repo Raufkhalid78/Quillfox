@@ -192,22 +192,38 @@ export function LandingPage() {
               transition={{ duration: 0.8, delay: 0.5, ease: "easeOut" }}
               className="flex flex-col sm:flex-row items-center justify-center gap-4 mt-6"
             >
-              <Button 
-                variant="outline" 
-                size="lg" 
-                onClick={() => toast.success('The iOS app is coming soon to the App Store!')}
-                className="h-12 px-6 rounded-full border-white/20 text-white hover:bg-white/5 flex items-center gap-2"
+              <a 
+                href="#"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="transition-transform hover:scale-105"
+                onClick={(e) => {
+                  e.preventDefault()
+                  toast.success('The iOS app is coming soon to the App Store!')
+                }}
               >
-                <Apple className="w-5 h-5" /> Download on App Store
-              </Button>
-              <Button 
-                variant="outline" 
-                size="lg" 
-                onClick={() => toast.success('The Android app is coming soon to Google Play!')}
-                className="h-12 px-6 rounded-full border-white/20 text-white hover:bg-white/5 flex items-center gap-2"
+                <img 
+                  src="https://upload.wikimedia.org/wikipedia/commons/3/3c/Download_on_the_App_Store_Badge.svg" 
+                  alt="Download on the App Store" 
+                  className="h-10 sm:h-12 w-auto"
+                />
+              </a>
+              <a 
+                href="#"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="transition-transform hover:scale-105"
+                onClick={(e) => {
+                  e.preventDefault()
+                  toast.success('The Android app is coming soon to Google Play!')
+                }}
               >
-                <Play className="w-5 h-5" /> Get it on Google Play
-              </Button>
+                <img 
+                  src="https://upload.wikimedia.org/wikipedia/commons/7/78/Google_Play_Store_badge_EN.svg" 
+                  alt="Get it on Google Play" 
+                  className="h-10 sm:h-12 w-auto"
+                />
+              </a>
             </motion.div>
           </motion.div>
 

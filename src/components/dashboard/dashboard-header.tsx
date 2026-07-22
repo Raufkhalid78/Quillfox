@@ -6,7 +6,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { PenLine, ShieldCheck, ShieldAlert, Sun, Moon, Settings, Crown, LogOut } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-
+import Link from 'next/link'
 // Helper for initials
 function getInitials(name?: string | null) {
   if (!name) return '?'
@@ -35,10 +35,12 @@ export function DashboardHeader({
     <header className="sticky top-0 z-40 flex items-center justify-between h-14 px-4 md:px-8 border-b border-border/40 bg-background/80 backdrop-blur-md">
       <div className="flex items-center gap-3 min-w-0">
         {/* Mobile logo */}
-        <div className="md:hidden w-8 h-8 rounded-lg bg-gradient-to-br from-[#059669] to-[#0d9488] text-white flex items-center justify-center shrink-0">
-          <PenLine className="w-3.5 h-3.5" />
-        </div>
-        <h1 className="text-sm font-semibold tracking-tight truncate">QuillFox</h1>
+        <Link href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
+          <div className="md:hidden w-8 h-8 rounded-lg bg-gradient-to-br from-[#059669] to-[#0d9488] text-white flex items-center justify-center shrink-0">
+            <PenLine className="w-3.5 h-3.5" />
+          </div>
+          <h1 className="text-sm font-semibold tracking-tight truncate">QuillFox</h1>
+        </Link>
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
