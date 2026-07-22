@@ -27,8 +27,11 @@ export default function Page() {
           <Button
             variant="destructive"
             onClick={() => {
-              // @ts-ignore - explicitly calling an undefined function to trigger an error
-              myUndefinedFunction();
+              import('@sentry/nextjs').then((Sentry) => {
+                Sentry.captureException(new Error("Wizard Test Event Triggered"));
+                // @ts-ignore
+                myUndefinedFunction();
+              });
             }}
           >
             Throw Test Error

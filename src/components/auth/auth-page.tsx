@@ -11,9 +11,10 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from 'sonner'
-import { Sparkles, Loader2, ShieldCheck, PenTool, ArrowLeft, Mail, Eye, EyeOff, Moon, Sun } from 'lucide-react'
+import { Sparkles, Loader2, ShieldCheck, PenTool, ArrowLeft, Mail, Eye, EyeOff, Moon, Sun, Lock, Copy } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -71,6 +72,11 @@ export function AuthPage() {
   const [isForgotLoading, setIsForgotLoading] = useState(false)
   const [isRecovery, setIsRecovery] = useState(false)
   const [recoveryPassword, setRecoveryPassword] = useState('')
+  
+  // Recovery key UI state
+  const [newRecoveryKey, setNewRecoveryKey] = useState('')
+  const [inputRecoveryKey, setInputRecoveryKey] = useState('')
+  
   const login = useAppStore((s) => s.login)
   const setEncryptionKey = useAppStore((s) => s.setEncryptionKey)
   const { theme, setTheme } = useTheme()
@@ -155,8 +161,10 @@ export function AuthPage() {
              }).eq('id', user.id)
           }
         } catch (e) {
-          console.error(e)
-          toast.error('Failed to setup encryption. Your data may not be decrypted.')
+          console.error('Failed to unwrap encryption key during login:', e)
+          toast.error('Decryption failed. Please enter your Recovery Key to restore access.')
+          setIsRecovery(true)
+          return
         }
       } else {
         // Fallback for old users without KEK/MEK
@@ -202,9 +210,13 @@ export function AuthPage() {
       const saltBase64 = btoa(saltBinary)
 
       // KEK/MEK Architecture: Generate MEK and wrap with KEK
-      const { generateMasterKey, wrapEncryptionKey, generateRSAKeyPair, deriveKey, encrypt } = await import('@/lib/e2ee')
+      const { generateMasterKey, wrapEncryptionKey, generateRSAKeyPair, deriveKey, encrypt, generateRecoveryKey } = await import('@/lib/e2ee')
       const masterKey = await generateMasterKey()
       const wrappedMasterKeyObj = await wrapEncryptionKey(masterKey, registerPassword, salt)
+      
+      // Recovery Key Architecture
+      const recoveryKey = generateRecoveryKey()
+      const recoveryWrappedMasterKeyObj = await wrapEncryptionKey(masterKey, recoveryKey, salt)
 
       // Generate RSA Key Pair for the user
       const { publicKey, privateKey } = await generateRSAKeyPair()
@@ -220,6 +232,7 @@ export function AuthPage() {
             name: registerName.trim(),
             salt: saltBase64,
             wrapped_master_key: wrappedMasterKeyObj, // store MEK wrapped by password
+            recovery_wrapped_master_key: recoveryWrappedMasterKeyObj, // store MEK wrapped by recovery key
             public_rsa_key: publicKey,
             encrypted_private_rsa_key: encryptedPrivateKey,
           }
@@ -247,6 +260,11 @@ export function AuthPage() {
         return
       }
 
+      // Show recovery key modal
+      setNewRecoveryKey(recoveryKey)
+      
+      // Delay routing/login until they acknowledge the recovery key
+      // The actual login/routing logic is handled in the modal's acknowledge handler
       login({ 
         id: user.id, 
         email: user.email!, 
@@ -255,8 +273,6 @@ export function AuthPage() {
       })
 
       setEncryptionKey(masterKey, salt)
-      toast.success('Account created successfully!')
-      router.push('/dashboard')
     } catch {
       toast.error('Network error. Please try again.')
     } finally {
@@ -301,14 +317,72 @@ export function AuthPage() {
     }
     setIsLoading(true)
     try {
-      const { error } = await supabase.auth.updateUser({ password: recoveryPassword })
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error("No user session found.")
+
+      let updatedData: any = {}
+
+      if (inputRecoveryKey.trim()) {
+        const { unwrapEncryptionKey, wrapEncryptionKey } = await import('@/lib/e2ee')
+        const salt = user.user_metadata?.salt
+        const recoveryWrappedObj = user.user_metadata?.recovery_wrapped_master_key
+        if (!salt || !recoveryWrappedObj) {
+            toast.error('Recovery metadata missing. Cannot recover keys.')
+            setIsLoading(false)
+            return
+        }
+        try {
+            const saltArray = Uint8Array.from(atob(salt), (c) => c.charCodeAt(0))
+            const masterKey = await unwrapEncryptionKey(recoveryWrappedObj.ciphertext, recoveryWrappedObj.iv, inputRecoveryKey.trim(), saltArray)
+            const newWrappedObj = await wrapEncryptionKey(masterKey, recoveryPassword, salt)
+            updatedData = { wrapped_master_key: newWrappedObj }
+        } catch (err) {
+            toast.error('Invalid Recovery Key. Please check for typos.')
+            setIsLoading(false)
+            return
+        }
+      } else {
+        if (!window.confirm("WARNING: You did not provide a Recovery Key. Proceeding will wipe your old encryption keys and permanently lose access to previous notes. Continue?")) {
+            setIsLoading(false)
+            return
+        }
+        const { generateMasterKey, wrapEncryptionKey, generateRSAKeyPair, encrypt, generateRecoveryKey } = await import('@/lib/e2ee')
+        const masterKey = await generateMasterKey()
+        let salt = user.user_metadata?.salt
+        if (!salt) {
+            const newSalt = crypto.getRandomValues(new Uint8Array(16))
+            salt = btoa(String.fromCharCode(...Array.from(newSalt)))
+        }
+        const wrappedMasterKeyObj = await wrapEncryptionKey(masterKey, recoveryPassword, salt)
+        const recoveryKey = generateRecoveryKey()
+        const recoveryWrappedMasterKeyObj = await wrapEncryptionKey(masterKey, recoveryKey, salt)
+        const { publicKey, privateKey } = await generateRSAKeyPair()
+        const encryptedPrivateKey = await encrypt(privateKey, masterKey)
+        
+        updatedData = {
+            salt,
+            wrapped_master_key: wrappedMasterKeyObj,
+            recovery_wrapped_master_key: recoveryWrappedMasterKeyObj,
+            public_rsa_key: publicKey,
+            encrypted_private_rsa_key: encryptedPrivateKey,
+        }
+        await supabase.from('profiles').update({ public_rsa_key: publicKey }).eq('id', user.id)
+        setNewRecoveryKey(recoveryKey)
+      }
+
+      const { error } = await supabase.auth.updateUser({ 
+        password: recoveryPassword,
+        data: updatedData
+      })
       if (error) {
         toast.error(error.message || 'Failed to update password')
         return
       }
       toast.success('Password updated! Please log in.')
-      setIsRecovery(false)
-      window.history.replaceState({}, document.title, window.location.pathname)
+      if (!updatedData.recovery_wrapped_master_key) {
+        setIsRecovery(false)
+        window.history.replaceState({}, document.title, window.location.pathname)
+      }
     } catch {
       toast.error('Network error')
     } finally {
@@ -316,8 +390,55 @@ export function AuthPage() {
     }
   }
 
+  const handleAcknowledgeRecoveryKey = async () => {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (session) {
+      toast.success('Registration completed!')
+      router.push('/dashboard')
+    } else {
+      toast.success('Registration successful! Please check your email to verify your account.')
+      setActiveTab('login')
+      setLoginEmail(registerEmail.trim())
+    }
+    setNewRecoveryKey('')
+    setIsRecovery(false)
+    window.history.replaceState({}, document.title, window.location.pathname)
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-mesh relative overflow-hidden noise-overlay">
+        
+        {/* Recovery Key Modal Overlay */}
+        {newRecoveryKey && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4">
+            <div className="bg-card border shadow-2xl rounded-2xl p-8 max-w-md w-full relative overflow-hidden">
+              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-purple-500 to-coral-500" />
+              <h2 className="text-2xl font-bold mb-4 flex items-center gap-2 text-foreground">
+                <Lock className="w-6 h-6 text-purple-500" /> Save Your Recovery Key
+              </h2>
+              <p className="text-sm text-muted-foreground mb-6">
+                Because your notes are end-to-end encrypted, Quillo cannot reset your password without losing your data. 
+                <strong className="text-foreground"> Write down this Recovery Key.</strong> It is the ONLY way to recover your notes if you forget your password.
+              </p>
+              <div className="bg-muted p-4 rounded-xl flex items-center justify-between mb-6 border font-mono text-lg text-foreground text-center">
+                <span className="flex-1 tracking-wider">{newRecoveryKey}</span>
+                <Button variant="ghost" size="icon" onClick={() => {
+                  navigator.clipboard.writeText(newRecoveryKey)
+                  toast.success('Copied to clipboard!')
+                }}>
+                  <Copy className="w-5 h-5 text-muted-foreground" />
+                </Button>
+              </div>
+              <Button 
+                onClick={handleAcknowledgeRecoveryKey} 
+                className="w-full btn-gradient btn-shine h-12 text-base font-medium"
+              >
+                I have saved it safely
+              </Button>
+            </div>
+          </div>
+        )}
+
       {/* Animated Gradient Orbs */}
       <div className="gradient-orb gradient-orb-purple w-[400px] h-[400px] -top-20 -left-20 animate-float" />
       <div className="gradient-orb gradient-orb-coral w-[350px] h-[350px] -bottom-10 -right-10 animate-float-delayed" />
@@ -359,6 +480,7 @@ export function AuthPage() {
       >
         {/* Logo */}
         <motion.div variants={itemVariants} className="text-center mb-8">
+          <Link href="/" className="inline-block cursor-pointer outline-none">
           <motion.div
             className="inline-flex items-center justify-center w-20 h-20 rounded-2xl mb-5 relative"
             whileHover={{ scale: 1.05, rotate: 2 }}
@@ -410,6 +532,7 @@ export function AuthPage() {
             </motion.span>
             .
           </motion.p>
+          </Link>
         </motion.div>
 
         {/* Auth Card */}
@@ -423,7 +546,7 @@ export function AuthPage() {
               {isRecovery ? (
                 <div className="space-y-6">
                   <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-600 dark:text-amber-400">
-                    <strong>Warning:</strong> Resetting your password will result in the loss of your end-to-end encrypted notes unless you have a backup of your old encryption key.
+                    <strong>Warning:</strong> You must enter your Recovery Key to preserve your old encrypted notes. If you lost it, leave the field blank to start fresh (old notes will be lost).
                   </div>
                   <form onSubmit={handleResetPassword} className="space-y-4">
                     <div className="space-y-2">
@@ -449,6 +572,19 @@ export function AuthPage() {
                           {showRecoveryPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                         </Button>
                       </div>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label htmlFor="recovery-key">Recovery Key (Optional)</Label>
+                      <Input
+                        id="recovery-key"
+                        type="text"
+                        value={inputRecoveryKey}
+                        onChange={(e) => setInputRecoveryKey(e.target.value)}
+                        placeholder="e.g. A1B2-C3D4-E5F6-G7H8"
+                        disabled={isLoading}
+                        className="h-11 rounded-xl font-mono uppercase"
+                      />
                     </div>
                     <Button
                       type="submit"
@@ -546,6 +682,9 @@ export function AuthPage() {
                               Back to login
                             </Button>
                             <form onSubmit={handleForgotPassword} className="space-y-4">
+                              <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-600 dark:text-amber-400 mb-4">
+                                <strong>Warning:</strong> You MUST have your Recovery Key to restore your encrypted notes after a password reset. Otherwise, previously saved data will be lost forever.
+                              </div>
                               <div className="space-y-2">
                                 <Label htmlFor="forgot-email" className="text-sm font-medium">Email Address</Label>
                                 <div className="relative">

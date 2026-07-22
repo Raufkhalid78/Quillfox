@@ -322,3 +322,15 @@ export async function loadWorkspaceKeys(mek: CryptoKey, encryptedPrivateKey: str
 
   return workspaceKeys;
 }
+
+export function generateRecoveryKey(): string {
+  // Generate a random 16-character string in groups of 4 (e.g. A1B2-C3D4-E5F6-G7H8)
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Exclude easily confused chars (I, 1, O, 0)
+  let result = '';
+  const randomBytes = crypto.getRandomValues(new Uint8Array(16));
+  for (let i = 0; i < 16; i++) {
+    if (i > 0 && i % 4 === 0) result += '-';
+    result += chars[randomBytes[i] % chars.length];
+  }
+  return result;
+}
