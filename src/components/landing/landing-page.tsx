@@ -4,7 +4,8 @@ import React, { useRef, useState, useEffect } from 'react'
 import { motion, useScroll, useTransform, useSpring, useMotionValue, useAnimationFrame } from 'framer-motion'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
-import { Shield, Users, Lock, ChevronRight, Zap, Sparkles } from 'lucide-react'
+import { Shield, Users, Lock, ChevronRight, Zap, Sparkles, Apple, Play } from 'lucide-react'
+import { toast } from 'sonner'
 
 // --- Reusable 3D Tilt Card ---
 function TiltCard({ children, className }: { children: React.ReactNode, className?: string }) {
@@ -194,16 +195,18 @@ export function LandingPage() {
               <Button 
                 variant="outline" 
                 size="lg" 
+                onClick={() => toast.success('The iOS app is coming soon to the App Store!')}
                 className="h-12 px-6 rounded-full border-white/20 text-white hover:bg-white/5 flex items-center gap-2"
               >
-                <img src="/apple-logo.svg" alt="iOS" className="w-5 h-5 invert" /> Download on App Store
+                <Apple className="w-5 h-5" /> Download on App Store
               </Button>
               <Button 
                 variant="outline" 
                 size="lg" 
+                onClick={() => toast.success('The Android app is coming soon to Google Play!')}
                 className="h-12 px-6 rounded-full border-white/20 text-white hover:bg-white/5 flex items-center gap-2"
               >
-                <img src="/google-play.svg" alt="Android" className="w-5 h-5" /> Get it on Google Play
+                <Play className="w-5 h-5" /> Get it on Google Play
               </Button>
             </motion.div>
           </motion.div>
