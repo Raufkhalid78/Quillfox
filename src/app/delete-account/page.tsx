@@ -54,7 +54,9 @@ export default function DeleteAccountScreen() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("No active session found.");
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://mxbxxzatmoactxtxkcll.supabase.co'}/functions/v1/delete-account`, {
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      if (!supabaseUrl) throw new Error('NEXT_PUBLIC_SUPABASE_URL is not configured.');
+      const response = await fetch(`${supabaseUrl}/functions/v1/delete-account`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${session.access_token}`,

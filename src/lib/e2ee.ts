@@ -108,12 +108,37 @@ export async function decrypt(
   const iv = combined.slice(0, IV_LENGTH)
   const ciphertext = combined.slice(IV_LENGTH)
   
-  const decrypted = await crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv },
-    key,
-    ciphertext
-  )
-  return new TextDecoder().decode(decrypted)
+  try {
+    const decrypted = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv },
+      key,
+      ciphertext
+    )
+    return new TextDecoder().decode(decrypted)
+  } catch (error) {
+    // FALLBACK for legacy corrupted notes (encrypted with empty IV on mobile)
+    try {
+      const rawKey = await crypto.subtle.exportKey('raw', key)
+      const rawKeyBytes = new Uint8Array(rawKey)
+      let keyStr = ''
+      for (let i = 0; i < rawKeyBytes.length; i++) keyStr += String.fromCharCode(rawKeyBytes[i])
+      
+      const fbCiphertextStr = binary.substring(0, binary.length - 16)
+      const fbTagStr = binary.substring(binary.length - 16)
+      
+      const decipher = forge.cipher.createDecipher('AES-GCM', keyStr)
+      decipher.start({ iv: '', tag: forge.util.createBuffer(fbTagStr) })
+      decipher.update(forge.util.createBuffer(fbCiphertextStr))
+      
+      if (decipher.finish()) {
+        return forge.util.decodeUtf8(decipher.output.getBytes())
+      }
+    } catch (fbErr) {
+      // Ignore and throw original error
+    }
+    
+    throw new Error('Decryption failed')
+  }
 }
 
 // Check if a string looks like encrypted data (base64 format)
@@ -264,22 +289,25 @@ export async function decryptWithPrivateKey(ciphertextB64: string, privateKeyPem
   return decrypted;
 }
 
-// Export CryptoKey to binary string for RSA encryption
+// Export CryptoKey to a base64 string for RSA encryption.
+// Both platforms now standardize on base64 as the canonical AES key wire format.
 export async function exportKeyToString(key: CryptoKey): Promise<string> {
-  const exported = await crypto.subtle.exportKey('raw', key);
-  const bytes = new Uint8Array(exported);
-  let binary = '';
+  const exported = await crypto.subtle.exportKey('raw', key)
+  const bytes = new Uint8Array(exported)
+  let binary = ''
   for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i]);
+    binary += String.fromCharCode(bytes[i])
   }
-  return binary;
+  return btoa(binary) // ← was: return binary (raw bytes) — caused mobile decode64() to produce garbage
 }
 
-// Import binary string back to CryptoKey
-export async function importKeyFromString(binaryString: string): Promise<CryptoKey> {
-  const bytes = new Uint8Array(binaryString.length);
-  for (let i = 0; i < binaryString.length; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
+// Import a base64 string back to a CryptoKey.
+export async function importKeyFromString(base64String: string): Promise<CryptoKey> {
+  // base64-decode first (matching exportKeyToString's btoa output)
+  const binary = atob(base64String) // ← was: treated the input as raw binary directly
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i)
   }
   return await crypto.subtle.importKey(
     'raw',
@@ -287,7 +315,7 @@ export async function importKeyFromString(binaryString: string): Promise<CryptoK
     { name: 'AES-GCM' },
     true,
     ['encrypt', 'decrypt']
-  );
+  )
 }
 
 // Load and decrypt all workspace keys for a user

@@ -13,6 +13,8 @@ create table if not exists public.profiles (
   encrypted_private_rsa_key text,
   trial_ends_at timestamp with time zone,
   extra_collaborators integer default 0 not null,
+  encryption_salt text,
+  push_token text,
   updated_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
@@ -87,10 +89,25 @@ create table if not exists public.workspace_members (
   role text default 'member' not null,
   joined_at timestamp with time zone default timezone('utc'::text, now()) not null,
   encrypted_workspace_key text,
+  is_muted boolean default false not null,
   unique (user_id, workspace_id)
 );
 
 alter table public.workspace_members enable row level security;
+
+-- Helper function: avoids RLS infinite recursion on workspace_members SELECT policy.
+-- Called from policies on other tables too (notes, todo_lists etc.) to check membership.
+create or replace function public.is_workspace_member(ws_id text, u_id uuid)
+returns boolean
+security definer
+as $$
+begin
+  return exists (
+    select 1 from public.workspace_members
+    where workspace_id = ws_id and user_id = u_id
+  );
+end;
+$$ language plpgsql;
 
 -- Workspaces RLS Policies
 create policy "Allow members to read workspaces" on public.workspaces for select using (
@@ -105,12 +122,11 @@ create policy "Allow owners to update workspaces" on public.workspaces for updat
 create policy "Allow owners to delete workspaces" on public.workspaces for delete using (auth.uid() = owner_id);
 
 -- Workspace Members RLS Policies
+-- Uses is_workspace_member() helper to avoid infinite recursion (Postgres rejects
+-- policies that query the same table they are protecting via a plain sub-select).
 create policy "Allow members to read memberships" on public.workspace_members for select using (
   auth.uid() = user_id or
-  exists (
-    select 1 from public.workspace_members wm
-    where wm.workspace_id = workspace_members.workspace_id and wm.user_id = auth.uid()
-  )
+  public.is_workspace_member(workspace_id, auth.uid())
 );
 create policy "Allow owners to insert memberships" on public.workspace_members for insert with check (
   exists (
