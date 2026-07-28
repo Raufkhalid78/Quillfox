@@ -17,8 +17,10 @@ create table if not exists public.profiles (
 );
 
 alter table public.profiles enable row level security;
+
 DROP POLICY IF EXISTS "Allow users to read their own profile" ON public.profiles;
 create policy "Allow users to read their own profile" on public.profiles for select using (auth.uid() = id);
+
 DROP POLICY IF EXISTS "Allow users to read profiles of workspace members" ON public.profiles;
 create policy "Allow users to read profiles of workspace members" on public.profiles for select using (
   exists (
@@ -27,6 +29,7 @@ create policy "Allow users to read profiles of workspace members" on public.prof
     where wm1.user_id = auth.uid() and wm2.user_id = profiles.id
   )
 );
+
 DROP POLICY IF EXISTS "Allow users to update their own profile" ON public.profiles;
 create policy "Allow users to update their own profile" on public.profiles for update using (auth.uid() = id);
 
@@ -109,6 +112,7 @@ end;
 $$ language plpgsql;
 
 -- Workspaces RLS Policies
+
 DROP POLICY IF EXISTS "Allow members to read workspaces" ON public.workspaces;
 create policy "Allow members to read workspaces" on public.workspaces for select using (
   auth.uid() = owner_id or 
@@ -117,21 +121,26 @@ create policy "Allow members to read workspaces" on public.workspaces for select
     where workspace_members.workspace_id = workspaces.id and workspace_members.user_id = auth.uid()
   )
 );
+
 DROP POLICY IF EXISTS "Allow owners to insert workspaces" ON public.workspaces;
 create policy "Allow owners to insert workspaces" on public.workspaces for insert with check (auth.uid() = owner_id);
+
 DROP POLICY IF EXISTS "Allow owners to update workspaces" ON public.workspaces;
 create policy "Allow owners to update workspaces" on public.workspaces for update using (auth.uid() = owner_id);
+
 DROP POLICY IF EXISTS "Allow owners to delete workspaces" ON public.workspaces;
 create policy "Allow owners to delete workspaces" on public.workspaces for delete using (auth.uid() = owner_id);
 
 -- Workspace Members RLS Policies
 -- Uses is_workspace_member() helper to avoid infinite recursion (Postgres rejects
 -- policies that query the same table they are protecting via a plain sub-select).
+
 DROP POLICY IF EXISTS "Allow members to read memberships" ON public.workspace_members;
 create policy "Allow members to read memberships" on public.workspace_members for select using (
   auth.uid() = user_id or
   public.is_workspace_member(workspace_id, auth.uid())
 );
+
 DROP POLICY IF EXISTS "Allow owners to insert memberships" ON public.workspace_members;
 create policy "Allow owners to insert memberships" on public.workspace_members for insert with check (
   exists (
@@ -139,6 +148,7 @@ create policy "Allow owners to insert memberships" on public.workspace_members f
     where workspaces.id = workspace_members.workspace_id and workspaces.owner_id = auth.uid()
   )
 );
+
 DROP POLICY IF EXISTS "Allow owners to update memberships" ON public.workspace_members;
 create policy "Allow owners to update memberships" on public.workspace_members for update using (
   exists (
@@ -146,6 +156,7 @@ create policy "Allow owners to update memberships" on public.workspace_members f
     where workspaces.id = workspace_members.workspace_id and workspaces.owner_id = auth.uid()
   )
 );
+
 DROP POLICY IF EXISTS "Allow owners to delete memberships" ON public.workspace_members;
 create policy "Allow owners to delete memberships" on public.workspace_members for delete using (
   exists (
@@ -168,6 +179,7 @@ create table if not exists public.notes (
 );
 
 alter table public.notes enable row level security;
+
 DROP POLICY IF EXISTS "Allow access to own or workspace notes" ON public.notes;
 create policy "Allow access to own or workspace notes" on public.notes for select using (
   auth.uid() = author_id or (
@@ -177,10 +189,13 @@ create policy "Allow access to own or workspace notes" on public.notes for selec
     )
   )
 );
+
 DROP POLICY IF EXISTS "Allow inserting own notes" ON public.notes;
 create policy "Allow inserting own notes" on public.notes for insert with check (auth.uid() = author_id);
+
 DROP POLICY IF EXISTS "Allow updating own notes" ON public.notes;
 create policy "Allow updating own notes" on public.notes for update using (auth.uid() = author_id);
+
 DROP POLICY IF EXISTS "Allow deleting own notes" ON public.notes;
 create policy "Allow deleting own notes" on public.notes for delete using (auth.uid() = author_id);
 
@@ -197,6 +212,7 @@ create table if not exists public.todo_lists (
 );
 
 alter table public.todo_lists enable row level security;
+
 DROP POLICY IF EXISTS "Allow access to own/workspace todo_lists" ON public.todo_lists;
 create policy "Allow access to own/workspace todo_lists" on public.todo_lists for select using (
   auth.uid() = author_id or (
@@ -206,10 +222,13 @@ create policy "Allow access to own/workspace todo_lists" on public.todo_lists fo
     )
   )
 );
+
 DROP POLICY IF EXISTS "Allow inserting own todo_lists" ON public.todo_lists;
 create policy "Allow inserting own todo_lists" on public.todo_lists for insert with check (auth.uid() = author_id);
+
 DROP POLICY IF EXISTS "Allow updating own todo_lists" ON public.todo_lists;
 create policy "Allow updating own todo_lists" on public.todo_lists for update using (auth.uid() = author_id);
+
 DROP POLICY IF EXISTS "Allow deleting own todo_lists" ON public.todo_lists;
 create policy "Allow deleting own todo_lists" on public.todo_lists for delete using (auth.uid() = author_id);
 
@@ -226,6 +245,7 @@ create table if not exists public.todo_items (
 );
 
 alter table public.todo_items enable row level security;
+
 DROP POLICY IF EXISTS "Allow all access to own/workspace todo items" ON public.todo_items;
 create policy "Allow all access to own/workspace todo items" on public.todo_items for all using (
   exists (
@@ -260,6 +280,7 @@ create table if not exists public.note_versions (
 );
 
 alter table public.note_versions enable row level security;
+
 DROP POLICY IF EXISTS "Allow select note versions" ON public.note_versions;
 create policy "Allow select note versions" on public.note_versions for select using (
   exists (
@@ -272,6 +293,7 @@ create policy "Allow select note versions" on public.note_versions for select us
     ))
   )
 );
+
 DROP POLICY IF EXISTS "Allow modify note versions" ON public.note_versions;
 create policy "Allow modify note versions" on public.note_versions for all using (
   exists (
@@ -289,8 +311,10 @@ create table if not exists public.activity_logs (
 );
 
 alter table public.activity_logs enable row level security;
+
 DROP POLICY IF EXISTS "Allow select access to own activity_logs" ON public.activity_logs;
 create policy "Allow select access to own activity_logs" on public.activity_logs for select using (auth.uid() = user_id);
+
 DROP POLICY IF EXISTS "Allow insert access to own activity_logs" ON public.activity_logs;
 create policy "Allow insert access to own activity_logs" on public.activity_logs for insert with check (auth.uid() = user_id);
 
@@ -313,6 +337,7 @@ end;
 $$ language plpgsql security definer;
 
 drop trigger if exists enforce_note_limits on public.notes;
+
 DROP TRIGGER IF EXISTS enforce_note_limits ON public.notes;
 create trigger enforce_note_limits
   before insert on public.notes
@@ -336,6 +361,7 @@ end;
 $$ language plpgsql security definer;
 
 drop trigger if exists enforce_todo_list_limits on public.todo_lists;
+
 DROP TRIGGER IF EXISTS enforce_todo_list_limits ON public.todo_lists;
 create trigger enforce_todo_list_limits
   before insert on public.todo_lists
@@ -362,6 +388,7 @@ end;
 $$ language plpgsql security definer;
 
 drop trigger if exists enforce_workspace_member_limits on public.workspace_members;
+
 DROP TRIGGER IF EXISTS enforce_workspace_member_limits ON public.workspace_members;
 create trigger enforce_workspace_member_limits
   before insert on public.workspace_members
@@ -376,12 +403,16 @@ create table if not exists public.folders (
 );
 
 alter table public.folders enable row level security;
+
 DROP POLICY IF EXISTS "Users can view their own folders" ON public.folders;
 create policy "Users can view their own folders" on public.folders for select using (auth.uid() = user_id);
+
 DROP POLICY IF EXISTS "Users can insert their own folders" ON public.folders;
 create policy "Users can insert their own folders" on public.folders for insert with check (auth.uid() = user_id);
+
 DROP POLICY IF EXISTS "Users can update their own folders" ON public.folders;
 create policy "Users can update their own folders" on public.folders for update using (auth.uid() = user_id);
+
 DROP POLICY IF EXISTS "Users can delete their own folders" ON public.folders;
 create policy "Users can delete their own folders" on public.folders for delete using (auth.uid() = user_id);
 
