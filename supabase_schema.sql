@@ -1,431 +1,521 @@
--- 1. Create Profiles Table (links auth.users with public profile info)
-create table if not exists public.profiles (
-  id uuid references auth.users on delete cascade primary key,
+-- =========================================================
+-- PHASE 1: TABLE DEFINITIONS (Dependencies first)
+-- =========================================================
+
+-- 1. Profiles Table (linked to auth.users)
+CREATE TABLE IF NOT EXISTS public.profiles (
+  id uuid REFERENCES auth.users ON DELETE CASCADE PRIMARY KEY,
   name text,
-  email text not null,
+  email text NOT NULL,
   image text,
-  tier text default 'free' not null,
-  vault_auto_lock boolean default false not null,
-  vault_lock_timeout integer default 15 not null,
+  tier text DEFAULT 'free' NOT NULL,
+  vault_auto_lock boolean DEFAULT false NOT NULL,
+  vault_lock_timeout integer DEFAULT 15 NOT NULL,
   vault_passcode_hash text,
   public_rsa_key text,
   encrypted_private_rsa_key text,
-  trial_ends_at timestamp with time zone,
-  extra_collaborators integer default 0 not null,
   push_token text,
-  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
+  trial_ends_at timestamp with time zone,
+  extra_collaborators integer DEFAULT 0 NOT NULL,
+  updated_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
-alter table public.profiles enable row level security;
+-- 2. Workspaces Table
+CREATE TABLE IF NOT EXISTS public.workspaces (
+  id text PRIMARY KEY,
+  title text NOT NULL,
+  description text,
+  color text DEFAULT '#059669' NOT NULL,
+  icon text,
+  owner_id uuid REFERENCES auth.users ON DELETE CASCADE NOT NULL,
+  created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
+  updated_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- 3. Workspace Members Table
+CREATE TABLE IF NOT EXISTS public.workspace_members (
+  id text PRIMARY KEY,
+  user_id uuid REFERENCES auth.users ON DELETE CASCADE NOT NULL,
+  workspace_id text REFERENCES public.workspaces ON DELETE CASCADE NOT NULL,
+  role text DEFAULT 'member' NOT NULL,
+  joined_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
+  encrypted_workspace_key text,
+  is_muted boolean DEFAULT false NOT NULL,
+  UNIQUE (user_id, workspace_id)
+);
+
+-- 4. Notes Table
+CREATE TABLE IF NOT EXISTS public.notes (
+  id text PRIMARY KEY,
+  title text NOT NULL,
+  content text DEFAULT '' NOT NULL,
+  workspace_id text REFERENCES public.workspaces ON DELETE CASCADE,
+  author_id uuid REFERENCES auth.users ON DELETE CASCADE NOT NULL,
+  is_pinned boolean DEFAULT false NOT NULL,
+  is_archived boolean DEFAULT false NOT NULL,
+  created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
+  updated_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- 5. Todo Lists Table
+CREATE TABLE IF NOT EXISTS public.todo_lists (
+  id text PRIMARY KEY,
+  title text NOT NULL,
+  workspace_id text REFERENCES public.workspaces ON DELETE CASCADE,
+  author_id uuid REFERENCES auth.users ON DELETE CASCADE NOT NULL,
+  is_pinned boolean DEFAULT false NOT NULL,
+  is_archived boolean DEFAULT false NOT NULL,
+  created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
+  updated_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- 6. Todo Items Table
+CREATE TABLE IF NOT EXISTS public.todo_items (
+  id text PRIMARY KEY,
+  title text NOT NULL,
+  completed boolean DEFAULT false NOT NULL,
+  completed_at timestamp with time zone,
+  "order" integer DEFAULT 0 NOT NULL,
+  todo_list_id text REFERENCES public.todo_lists ON DELETE CASCADE NOT NULL,
+  created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
+  updated_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- 7. Note Versions Table
+CREATE TABLE IF NOT EXISTS public.note_versions (
+  id text PRIMARY KEY,
+  note_id text REFERENCES public.notes ON DELETE CASCADE NOT NULL,
+  title text NOT NULL,
+  content text NOT NULL,
+  version integer NOT NULL,
+  created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- 8. Activity Logs Table
+CREATE TABLE IF NOT EXISTS public.activity_logs (
+  id text PRIMARY KEY,
+  user_id uuid REFERENCES auth.users ON DELETE CASCADE NOT NULL,
+  activity_type text NOT NULL,
+  created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- 9. Folders Table
+CREATE TABLE IF NOT EXISTS public.folders (
+  id text PRIMARY KEY,
+  name text NOT NULL,
+  user_id uuid REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
+  created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- =========================================================
+-- PHASE 2: SECURITY FUNCTIONS (Bypasses RLS recursion)
+-- =========================================================
+CREATE OR REPLACE FUNCTION public.is_workspace_member(ws_id text, u_id uuid)
+RETURNS boolean
+SECURITY DEFINER
+AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 FROM public.workspace_members 
+    WHERE workspace_id = ws_id AND user_id = u_id
+  );
+END;
+$$ LANGUAGE plpgsql;
+
+-- =========================================================
+-- PHASE 3: ENABLE SECURITY (RLS)
+-- =========================================================
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.workspaces ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.workspace_members ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.notes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.todo_lists ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.todo_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.note_versions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.activity_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.folders ENABLE ROW LEVEL SECURITY;
+
+-- =========================================================
+-- PHASE 4: ROW LEVEL SECURITY POLICIES
+-- =========================================================
+
+-- Profiles Policies
 
 DROP POLICY IF EXISTS "Allow users to read their own profile" ON public.profiles;
-create policy "Allow users to read their own profile" on public.profiles for select using (auth.uid() = id);
+CREATE POLICY "Allow users to read their own profile" ON public.profiles FOR SELECT USING (auth.uid() = id);
 
 DROP POLICY IF EXISTS "Allow users to read profiles of workspace members" ON public.profiles;
-create policy "Allow users to read profiles of workspace members" on public.profiles for select using (
-  exists (
-    select 1 from public.workspace_members wm1 
-    join public.workspace_members wm2 on wm1.workspace_id = wm2.workspace_id 
-    where wm1.user_id = auth.uid() and wm2.user_id = profiles.id
+CREATE POLICY "Allow users to read profiles of workspace members" ON public.profiles FOR SELECT USING (
+  EXISTS (
+    SELECT 1 FROM public.workspace_members wm1 
+    JOIN public.workspace_members wm2 ON wm1.workspace_id = wm2.workspace_id 
+    WHERE wm1.user_id = auth.uid() AND wm2.user_id = profiles.id
   )
 );
 
 DROP POLICY IF EXISTS "Allow users to update their own profile" ON public.profiles;
-create policy "Allow users to update their own profile" on public.profiles for update using (auth.uid() = id);
+CREATE POLICY "Allow users to update their own profile" ON public.profiles FOR UPDATE USING (auth.uid() = id);
 
--- Secure RPC for searching users by email without exposing sensitive data
-create or replace function public.get_profile_by_email(search_email text)
-returns table (id uuid, name text, email text, image text, public_rsa_key text)
-security definer
-as $$
-begin
-  return query select p.id, p.name, p.email, p.image, p.public_rsa_key from public.profiles p where p.email = search_email limit 1;
-end;
-$$ language plpgsql;
-
--- Trigger to automatically insert a profile when a user registers
-create or replace function public.handle_new_user()
-returns trigger as $$
-begin
-  insert into public.profiles (
-    id, 
-    email, 
-    name,
-    public_rsa_key,
-    encrypted_private_rsa_key
-  )
-  values (
-    new.id, 
-    new.email, 
-    coalesce(new.raw_user_meta_data->>'name', ''),
-    new.raw_user_meta_data->>'public_rsa_key',
-    new.raw_user_meta_data->>'encrypted_private_rsa_key'
-  );
-  return new;
-end;
-$$ language plpgsql security definer;
-
-create or replace trigger on_auth_user_created
-  after insert on auth.users
-  for each row execute procedure public.handle_new_user();
-
--- 2. Create Workspaces Table
-create table if not exists public.workspaces (
-  id text primary key,
-  title text not null,
-  description text,
-  color text default '#059669' not null,
-  icon text,
-  owner_id uuid references auth.users on delete cascade not null,
-  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
-  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
-);
-
-alter table public.workspaces enable row level security;
-
--- 3. Create Workspace Members Table
-create table if not exists public.workspace_members (
-  id text primary key,
-  user_id uuid references public.profiles(id) on delete cascade not null,
-  workspace_id text references public.workspaces on delete cascade not null,
-  role text default 'member' not null,
-  joined_at timestamp with time zone default timezone('utc'::text, now()) not null,
-  encrypted_workspace_key text,
-  is_muted boolean default false not null,
-  unique (user_id, workspace_id)
-);
-
-alter table public.workspace_members enable row level security;
-
--- Helper function: avoids RLS infinite recursion on workspace_members SELECT policy.
--- Called from policies on other tables too (notes, todo_lists etc.) to check membership.
-create or replace function public.is_workspace_member(ws_id text, u_id uuid)
-returns boolean
-security definer
-as $$
-begin
-  return exists (
-    select 1 from public.workspace_members
-    where workspace_id = ws_id and user_id = u_id
-  );
-end;
-$$ language plpgsql;
-
--- Workspaces RLS Policies
+-- Workspaces Policies
 
 DROP POLICY IF EXISTS "Allow members to read workspaces" ON public.workspaces;
-create policy "Allow members to read workspaces" on public.workspaces for select using (
-  auth.uid() = owner_id or 
-  exists (
-    select 1 from public.workspace_members 
-    where workspace_members.workspace_id = workspaces.id and workspace_members.user_id = auth.uid()
+CREATE POLICY "Allow members to read workspaces" ON public.workspaces FOR SELECT USING (
+  auth.uid() = owner_id OR 
+  EXISTS (
+    SELECT 1 FROM public.workspace_members 
+    WHERE workspace_members.workspace_id = workspaces.id AND workspace_members.user_id = auth.uid()
   )
 );
 
 DROP POLICY IF EXISTS "Allow owners to insert workspaces" ON public.workspaces;
-create policy "Allow owners to insert workspaces" on public.workspaces for insert with check (auth.uid() = owner_id);
+CREATE POLICY "Allow owners to insert workspaces" ON public.workspaces FOR INSERT WITH CHECK (auth.uid() = owner_id);
 
 DROP POLICY IF EXISTS "Allow owners to update workspaces" ON public.workspaces;
-create policy "Allow owners to update workspaces" on public.workspaces for update using (auth.uid() = owner_id);
+CREATE POLICY "Allow owners to update workspaces" ON public.workspaces FOR UPDATE USING (auth.uid() = owner_id);
 
 DROP POLICY IF EXISTS "Allow owners to delete workspaces" ON public.workspaces;
-create policy "Allow owners to delete workspaces" on public.workspaces for delete using (auth.uid() = owner_id);
+CREATE POLICY "Allow owners to delete workspaces" ON public.workspaces FOR DELETE USING (auth.uid() = owner_id);
 
--- Workspace Members RLS Policies
--- Uses is_workspace_member() helper to avoid infinite recursion (Postgres rejects
--- policies that query the same table they are protecting via a plain sub-select).
+-- Workspace Members Policies (Uses helper function to avoid infinite recursion)
 
-DROP POLICY IF EXISTS "Allow members to read memberships" ON public.workspace_members;
-create policy "Allow members to read memberships" on public.workspace_members for select using (
-  auth.uid() = user_id or
-  public.is_workspace_member(workspace_id, auth.uid())
+DROP POLICY IF EXISTS "Allow select workspace_members" ON public.workspace_members;
+CREATE POLICY "Allow select workspace_members" ON public.workspace_members FOR SELECT USING (
+  auth.uid() = user_id OR public.is_workspace_member(workspace_id, auth.uid())
 );
 
-DROP POLICY IF EXISTS "Allow owners to insert memberships" ON public.workspace_members;
-create policy "Allow owners to insert memberships" on public.workspace_members for insert with check (
-  exists (
-    select 1 from public.workspaces 
-    where workspaces.id = workspace_members.workspace_id and workspaces.owner_id = auth.uid()
+DROP POLICY IF EXISTS "Allow insert workspace_members" ON public.workspace_members;
+CREATE POLICY "Allow insert workspace_members" ON public.workspace_members FOR INSERT WITH CHECK (
+  auth.uid() = user_id OR
+  EXISTS (
+    SELECT 1 FROM public.workspaces 
+    WHERE workspaces.id = workspace_members.workspace_id AND workspaces.owner_id = auth.uid()
   )
 );
 
-DROP POLICY IF EXISTS "Allow owners to update memberships" ON public.workspace_members;
-create policy "Allow owners to update memberships" on public.workspace_members for update using (
-  exists (
-    select 1 from public.workspaces 
-    where workspaces.id = workspace_members.workspace_id and workspaces.owner_id = auth.uid()
+DROP POLICY IF EXISTS "Allow update workspace_members" ON public.workspace_members;
+CREATE POLICY "Allow update workspace_members" ON public.workspace_members FOR UPDATE USING (
+  EXISTS (
+    SELECT 1 FROM public.workspaces 
+    WHERE workspaces.id = workspace_members.workspace_id AND workspaces.owner_id = auth.uid()
   )
 );
 
-DROP POLICY IF EXISTS "Allow owners to delete memberships" ON public.workspace_members;
-create policy "Allow owners to delete memberships" on public.workspace_members for delete using (
-  exists (
-    select 1 from public.workspaces 
-    where workspaces.id = workspace_members.workspace_id and workspaces.owner_id = auth.uid()
+DROP POLICY IF EXISTS "Allow delete workspace_members" ON public.workspace_members;
+CREATE POLICY "Allow delete workspace_members" ON public.workspace_members FOR DELETE USING (
+  auth.uid() = user_id OR
+  EXISTS (
+    SELECT 1 FROM public.workspaces 
+    WHERE workspaces.id = workspace_members.workspace_id AND workspaces.owner_id = auth.uid()
   )
 );
 
--- 4. Create Notes Table
-create table if not exists public.notes (
-  id text primary key,
-  title text not null,
-  content text default '' not null,
-  workspace_id text references public.workspaces on delete cascade,
-  author_id uuid references auth.users on delete cascade not null,
-  is_pinned boolean default false not null,
-  is_archived boolean default false not null,
-  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
-  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
-);
+-- Notes Policies
 
-alter table public.notes enable row level security;
-
-DROP POLICY IF EXISTS "Allow access to own or workspace notes" ON public.notes;
-create policy "Allow access to own or workspace notes" on public.notes for select using (
-  auth.uid() = author_id or (
-    workspace_id is not null and exists (
-      select 1 from public.workspace_members 
-      where workspace_members.workspace_id = notes.workspace_id and workspace_members.user_id = auth.uid()
+DROP POLICY IF EXISTS "Allow select notes" ON public.notes;
+CREATE POLICY "Allow select notes" ON public.notes FOR SELECT USING (
+  auth.uid() = author_id OR (
+    workspace_id IS NOT NULL AND EXISTS (
+      SELECT 1 FROM public.workspace_members 
+      WHERE workspace_members.workspace_id = notes.workspace_id AND workspace_members.user_id = auth.uid()
     )
   )
 );
 
-DROP POLICY IF EXISTS "Allow inserting own notes" ON public.notes;
-create policy "Allow inserting own notes" on public.notes for insert with check (auth.uid() = author_id);
-
-DROP POLICY IF EXISTS "Allow updating own notes" ON public.notes;
-create policy "Allow updating own notes" on public.notes for update using (auth.uid() = author_id);
-
-DROP POLICY IF EXISTS "Allow deleting own notes" ON public.notes;
-create policy "Allow deleting own notes" on public.notes for delete using (auth.uid() = author_id);
-
--- 5. Create Todo Lists Table
-create table if not exists public.todo_lists (
-  id text primary key,
-  title text not null,
-  workspace_id text references public.workspaces on delete cascade,
-  author_id uuid references auth.users on delete cascade not null,
-  is_pinned boolean default false not null,
-  is_archived boolean default false not null,
-  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
-  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
-);
-
-alter table public.todo_lists enable row level security;
-
-DROP POLICY IF EXISTS "Allow access to own/workspace todo_lists" ON public.todo_lists;
-create policy "Allow access to own/workspace todo_lists" on public.todo_lists for select using (
-  auth.uid() = author_id or (
-    workspace_id is not null and exists (
-      select 1 from public.workspace_members 
-      where workspace_members.workspace_id = todo_lists.workspace_id and workspace_members.user_id = auth.uid()
+DROP POLICY IF EXISTS "Allow insert notes" ON public.notes;
+CREATE POLICY "Allow insert notes" ON public.notes FOR INSERT WITH CHECK (
+  auth.uid() = author_id AND (
+    workspace_id IS NULL OR EXISTS (
+      SELECT 1 FROM public.workspace_members 
+      WHERE workspace_members.workspace_id = notes.workspace_id AND workspace_members.user_id = auth.uid()
     )
   )
 );
 
-DROP POLICY IF EXISTS "Allow inserting own todo_lists" ON public.todo_lists;
-create policy "Allow inserting own todo_lists" on public.todo_lists for insert with check (auth.uid() = author_id);
-
-DROP POLICY IF EXISTS "Allow updating own todo_lists" ON public.todo_lists;
-create policy "Allow updating own todo_lists" on public.todo_lists for update using (auth.uid() = author_id);
-
-DROP POLICY IF EXISTS "Allow deleting own todo_lists" ON public.todo_lists;
-create policy "Allow deleting own todo_lists" on public.todo_lists for delete using (auth.uid() = author_id);
-
--- 6. Create Todo Items Table
-create table if not exists public.todo_items (
-  id text primary key,
-  title text not null,
-  completed boolean default false not null,
-  completed_at timestamp with time zone,
-  "order" integer default 0 not null,
-  todo_list_id text references public.todo_lists on delete cascade not null,
-  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
-  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
-);
-
-alter table public.todo_items enable row level security;
-
-DROP POLICY IF EXISTS "Allow all access to own/workspace todo items" ON public.todo_items;
-create policy "Allow all access to own/workspace todo items" on public.todo_items for all using (
-  exists (
-    select 1 from public.todo_lists 
-    where todo_lists.id = todo_items.todo_list_id and (todo_lists.author_id = auth.uid() or (
-      todo_lists.workspace_id is not null and exists (
-        select 1 from public.workspace_members 
-        where workspace_members.workspace_id = todo_lists.workspace_id and workspace_members.user_id = auth.uid()
-      )
-    ))
-  )
-) with check (
-  exists (
-    select 1 from public.todo_lists 
-    where todo_lists.id = todo_items.todo_list_id and (todo_lists.author_id = auth.uid() or (
-      todo_lists.workspace_id is not null and exists (
-        select 1 from public.workspace_members 
-        where workspace_members.workspace_id = todo_lists.workspace_id and workspace_members.user_id = auth.uid()
-      )
-    ))
+DROP POLICY IF EXISTS "Allow update notes" ON public.notes;
+CREATE POLICY "Allow update notes" ON public.notes FOR UPDATE USING (
+  auth.uid() = author_id OR (
+    workspace_id IS NOT NULL AND EXISTS (
+      SELECT 1 FROM public.workspace_members 
+      WHERE workspace_members.workspace_id = notes.workspace_id AND workspace_members.user_id = auth.uid()
+    )
   )
 );
 
--- 7. Create Note Versions Table
-create table if not exists public.note_versions (
-  id text primary key,
-  note_id text references public.notes on delete cascade not null,
-  title text not null,
-  content text not null,
-  version integer not null,
-  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+DROP POLICY IF EXISTS "Allow delete notes" ON public.notes;
+CREATE POLICY "Allow delete notes" ON public.notes FOR DELETE USING (
+  auth.uid() = author_id OR (
+    workspace_id IS NOT NULL AND EXISTS (
+      SELECT 1 FROM public.workspace_members 
+      WHERE workspace_members.workspace_id = notes.workspace_id AND workspace_members.user_id = auth.uid()
+    )
+  )
 );
 
-alter table public.note_versions enable row level security;
+-- Todo Lists Policies
+
+DROP POLICY IF EXISTS "Allow select todo_lists" ON public.todo_lists;
+CREATE POLICY "Allow select todo_lists" ON public.todo_lists FOR SELECT USING (
+  auth.uid() = author_id OR (
+    workspace_id IS NOT NULL AND EXISTS (
+      SELECT 1 FROM public.workspace_members 
+      WHERE workspace_members.workspace_id = todo_lists.workspace_id AND workspace_members.user_id = auth.uid()
+    )
+  )
+);
+
+DROP POLICY IF EXISTS "Allow insert todo_lists" ON public.todo_lists;
+CREATE POLICY "Allow insert todo_lists" ON public.todo_lists FOR INSERT WITH CHECK (
+  auth.uid() = author_id AND (
+    workspace_id IS NULL OR EXISTS (
+      SELECT 1 FROM public.workspace_members 
+      WHERE workspace_members.workspace_id = todo_lists.workspace_id AND workspace_members.user_id = auth.uid()
+    )
+  )
+);
+
+DROP POLICY IF EXISTS "Allow update todo_lists" ON public.todo_lists;
+CREATE POLICY "Allow update todo_lists" ON public.todo_lists FOR UPDATE USING (
+  auth.uid() = author_id OR (
+    workspace_id IS NOT NULL AND EXISTS (
+      SELECT 1 FROM public.workspace_members 
+      WHERE workspace_members.workspace_id = todo_lists.workspace_id AND workspace_members.user_id = auth.uid()
+    )
+  )
+);
+
+DROP POLICY IF EXISTS "Allow delete todo_lists" ON public.todo_lists;
+CREATE POLICY "Allow delete todo_lists" ON public.todo_lists FOR DELETE USING (
+  auth.uid() = author_id OR (
+    workspace_id IS NOT NULL AND EXISTS (
+      SELECT 1 FROM public.workspace_members 
+      WHERE workspace_members.workspace_id = todo_lists.workspace_id AND workspace_members.user_id = auth.uid()
+    )
+  )
+);
+
+-- Todo Items Policies
+
+DROP POLICY IF EXISTS "Allow all access to todo items" ON public.todo_items;
+CREATE POLICY "Allow all access to todo items" ON public.todo_items FOR ALL USING (
+  EXISTS (
+    SELECT 1 FROM public.todo_lists 
+    WHERE todo_lists.id = todo_items.todo_list_id AND (
+      todo_lists.author_id = auth.uid() OR (
+        todo_lists.workspace_id IS NOT NULL AND EXISTS (
+          SELECT 1 FROM public.workspace_members 
+          WHERE workspace_members.workspace_id = todo_lists.workspace_id AND workspace_members.user_id = auth.uid()
+        )
+      )
+    )
+  )
+) WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM public.todo_lists 
+    WHERE todo_lists.id = todo_items.todo_list_id AND (
+      todo_lists.author_id = auth.uid() OR (
+        todo_lists.workspace_id IS NOT NULL AND EXISTS (
+          SELECT 1 FROM public.workspace_members 
+          WHERE workspace_members.workspace_id = todo_lists.workspace_id AND workspace_members.user_id = auth.uid()
+        )
+      )
+    )
+  )
+);
+
+-- Note Versions Policies
 
 DROP POLICY IF EXISTS "Allow select note versions" ON public.note_versions;
-create policy "Allow select note versions" on public.note_versions for select using (
-  exists (
-    select 1 from public.notes 
-    where notes.id = note_versions.note_id and (notes.author_id = auth.uid() or (
-      notes.workspace_id is not null and exists (
-        select 1 from public.workspace_members 
-        where workspace_members.workspace_id = notes.workspace_id and workspace_members.user_id = auth.uid()
+CREATE POLICY "Allow select note versions" ON public.note_versions FOR SELECT USING (
+  EXISTS (
+    SELECT 1 FROM public.notes 
+    WHERE notes.id = note_versions.note_id AND (notes.author_id = auth.uid() OR (
+      notes.workspace_id IS NOT NULL AND EXISTS (
+        SELECT 1 FROM public.workspace_members 
+        WHERE workspace_members.workspace_id = notes.workspace_id AND workspace_members.user_id = auth.uid()
       )
     ))
   )
 );
 
 DROP POLICY IF EXISTS "Allow modify note versions" ON public.note_versions;
-create policy "Allow modify note versions" on public.note_versions for all using (
-  exists (
-    select 1 from public.notes 
-    where notes.id = note_versions.note_id and notes.author_id = auth.uid()
+CREATE POLICY "Allow modify note versions" ON public.note_versions FOR ALL USING (
+  EXISTS (
+    SELECT 1 FROM public.notes 
+    WHERE notes.id = note_versions.note_id AND notes.author_id = auth.uid()
   )
 );
 
--- 8. Create Activity Logs Table
-create table if not exists public.activity_logs (
-  id text primary key,
-  user_id uuid references auth.users on delete cascade not null,
-  activity_type text not null,
-  created_at timestamp with time zone default timezone('utc'::text, now()) not null
-);
-
-alter table public.activity_logs enable row level security;
+-- Activity Logs Policies
 
 DROP POLICY IF EXISTS "Allow select access to own activity_logs" ON public.activity_logs;
-create policy "Allow select access to own activity_logs" on public.activity_logs for select using (auth.uid() = user_id);
+CREATE POLICY "Allow select access to own activity_logs" ON public.activity_logs FOR SELECT USING (auth.uid() = user_id);
 
 DROP POLICY IF EXISTS "Allow insert access to own activity_logs" ON public.activity_logs;
-create policy "Allow insert access to own activity_logs" on public.activity_logs for insert with check (auth.uid() = user_id);
+CREATE POLICY "Allow insert access to own activity_logs" ON public.activity_logs FOR INSERT WITH CHECK (auth.uid() = user_id);
 
--- 9. Add Free Tier Enforcement Triggers
-create or replace function public.check_note_limits()
-returns trigger as $$
-declare
+-- Folders Policies
+
+DROP POLICY IF EXISTS "Users can view their own folders" ON public.folders;
+CREATE POLICY "Users can view their own folders" ON public.folders FOR SELECT USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users can insert their own folders" ON public.folders;
+CREATE POLICY "Users can insert their own folders" ON public.folders FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users can update their own folders" ON public.folders;
+CREATE POLICY "Users can update their own folders" ON public.folders FOR UPDATE USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users can delete their own folders" ON public.folders;
+CREATE POLICY "Users can delete their own folders" ON public.folders FOR DELETE USING (auth.uid() = user_id);
+
+-- =========================================================
+-- PHASE 5: DB FUNCTIONS & TRIGGERS
+-- =========================================================
+
+-- Secure RPC for searching collaborators by email
+CREATE OR REPLACE FUNCTION public.get_profile_by_email(search_email text)
+RETURNS TABLE (id uuid, name text, email text, image text, public_rsa_key text)
+SECURITY DEFINER
+AS $$
+BEGIN
+  RETURN QUERY SELECT p.id, p.name, p.email, p.image, p.public_rsa_key FROM public.profiles p WHERE p.email = search_email LIMIT 1;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Trigger function: Creates public profile row on registration
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS trigger AS $$
+BEGIN
+  INSERT INTO public.profiles (
+    id, 
+    email, 
+    name,
+    public_rsa_key,
+    encrypted_private_rsa_key
+  )
+  VALUES (
+    new.id, 
+    new.email, 
+    coalesce(new.raw_user_meta_data->>'name', ''),
+    new.raw_user_meta_data->>'public_rsa_key',
+    new.raw_user_meta_data->>'encrypted_private_rsa_key'
+  );
+  RETURN new;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE OR REPLACE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user();
+
+-- Trigger function: Note limit check
+CREATE OR REPLACE FUNCTION public.check_note_limits()
+RETURNS trigger AS $$
+DECLARE
   user_tier text;
   note_count integer;
-begin
-  select tier into user_tier from public.profiles where id = new.author_id;
-  if user_tier = 'free' then
-    select count(*) into note_count from public.notes where author_id = new.author_id;
-    if note_count >= 10 then
-      raise exception 'Free tier limit reached: Maximum 10 notes allowed.';
-    end if;
-  end if;
-  return new;
-end;
-$$ language plpgsql security definer;
-
-drop trigger if exists enforce_note_limits on public.notes;
+  author_uuid uuid;
+BEGIN
+  author_uuid := new.author_id::uuid;
+  
+  SELECT tier INTO user_tier FROM public.profiles WHERE id = author_uuid;
+  IF user_tier = 'free' THEN
+    SELECT count(*) INTO note_count FROM public.notes WHERE author_id = author_uuid;
+    IF note_count >= 10 THEN
+      RAISE EXCEPTION 'Free tier limit reached: Maximum 10 notes allowed.';
+    END IF;
+  END IF;
+  RETURN new;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
 DROP TRIGGER IF EXISTS enforce_note_limits ON public.notes;
-create trigger enforce_note_limits
-  before insert on public.notes
-  for each row execute procedure public.check_note_limits();
+CREATE TRIGGER enforce_note_limits
+  BEFORE INSERT ON public.notes
+  FOR EACH ROW EXECUTE PROCEDURE public.check_note_limits();
 
-create or replace function public.check_todo_list_limits()
-returns trigger as $$
-declare
+-- Trigger function: Todo List limit check
+CREATE OR REPLACE FUNCTION public.check_todo_list_limits()
+RETURNS trigger AS $$
+DECLARE
   user_tier text;
   todo_count integer;
-begin
-  select tier into user_tier from public.profiles where id = new.author_id;
-  if user_tier = 'free' then
-    select count(*) into todo_count from public.todo_lists where author_id = new.author_id;
-    if todo_count >= 3 then
-      raise exception 'Free tier limit reached: Maximum 3 todo lists allowed.';
-    end if;
-  end if;
-  return new;
-end;
-$$ language plpgsql security definer;
+  author_uuid uuid;
+BEGIN
+  author_uuid := new.author_id::uuid;
 
-drop trigger if exists enforce_todo_list_limits on public.todo_lists;
+  SELECT tier INTO user_tier FROM public.profiles WHERE id = author_uuid;
+  IF user_tier = 'free' THEN
+    SELECT count(*) INTO todo_count FROM public.todo_lists WHERE author_id = author_uuid;
+    IF todo_count >= 3 THEN
+      RAISE EXCEPTION 'Free tier limit reached: Maximum 3 todo lists allowed.';
+    END IF;
+  END IF;
+  RETURN new;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
 DROP TRIGGER IF EXISTS enforce_todo_list_limits ON public.todo_lists;
-create trigger enforce_todo_list_limits
-  before insert on public.todo_lists
-  for each row execute procedure public.check_todo_list_limits();
+CREATE TRIGGER enforce_todo_list_limits
+  BEFORE INSERT ON public.todo_lists
+  FOR EACH ROW EXECUTE PROCEDURE public.check_todo_list_limits();
 
-create or replace function public.check_workspace_member_limits()
-returns trigger as $$
-declare
+-- Trigger function: Workspace member limit check
+CREATE OR REPLACE FUNCTION public.check_workspace_member_limits()
+RETURNS trigger AS $$
+DECLARE
   owner_tier text;
   member_count integer;
   ws_owner_id uuid;
-begin
-  select owner_id into ws_owner_id from public.workspaces where id = new.workspace_id;
-  select tier into owner_tier from public.profiles where id = ws_owner_id;
+BEGIN
+  SELECT owner_id INTO ws_owner_id FROM public.workspaces WHERE id = new.workspace_id;
+  SELECT tier INTO owner_tier FROM public.profiles WHERE id = ws_owner_id;
   
-  if owner_tier = 'free' then
-    select count(*) into member_count from public.workspace_members where workspace_id = new.workspace_id;
-    if member_count >= 2 then
-      raise exception 'Free tier limit reached: Maximum 2 collaborators allowed.';
-    end if;
-  end if;
-  return new;
-end;
-$$ language plpgsql security definer;
-
-drop trigger if exists enforce_workspace_member_limits on public.workspace_members;
+  IF owner_tier = 'free' THEN
+    SELECT count(*) INTO member_count FROM public.workspace_members WHERE workspace_id = new.workspace_id;
+    IF member_count >= 2 THEN
+      RAISE EXCEPTION 'Free tier limit reached: Maximum 2 collaborators allowed.';
+    END IF;
+  END IF;
+  RETURN new;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
 DROP TRIGGER IF EXISTS enforce_workspace_member_limits ON public.workspace_members;
-create trigger enforce_workspace_member_limits
-  before insert on public.workspace_members
-  for each row execute procedure public.check_workspace_member_limits();
+CREATE TRIGGER enforce_workspace_member_limits
+  BEFORE INSERT ON public.workspace_members
+  FOR EACH ROW EXECUTE PROCEDURE public.check_workspace_member_limits();
 
--- Create Folders Table
-create table if not exists public.folders (
-  id text primary key,
-  name text not null,
-  user_id uuid references public.profiles(id) on delete cascade not null,
-  created_at timestamp with time zone default timezone('utc'::text, now()) not null
-);
+-- =========================================================
+-- PHASE 6: STORAGE BUCKETS SETUP
+-- =========================================================
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('avatars', 'avatars', true)
+ON CONFLICT (id) DO NOTHING;
 
-alter table public.folders enable row level security;
+-- Storage Bucket Policies
 
-DROP POLICY IF EXISTS "Users can view their own folders" ON public.folders;
-create policy "Users can view their own folders" on public.folders for select using (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Allow public read access to avatars" ON storage.objects;
+CREATE POLICY "Allow public read access to avatars" ON storage.objects FOR SELECT USING (bucket_id = 'avatars');
 
-DROP POLICY IF EXISTS "Users can insert their own folders" ON public.folders;
-create policy "Users can insert their own folders" on public.folders for insert with check (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Allow authenticated upload to avatars" ON storage.objects;
+CREATE POLICY "Allow authenticated upload to avatars" ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'avatars' AND auth.role() = 'authenticated');
 
-DROP POLICY IF EXISTS "Users can update their own folders" ON public.folders;
-create policy "Users can update their own folders" on public.folders for update using (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Allow users to update own avatar" ON storage.objects;
+CREATE POLICY "Allow users to update own avatar" ON storage.objects FOR UPDATE USING (bucket_id = 'avatars' AND auth.uid()::text = (storage.foldername(name))[1]);
 
-DROP POLICY IF EXISTS "Users can delete their own folders" ON public.folders;
-create policy "Users can delete their own folders" on public.folders for delete using (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Allow users to delete own avatar" ON storage.objects;
+CREATE POLICY "Allow users to delete own avatar" ON storage.objects FOR DELETE USING (bucket_id = 'avatars' AND auth.uid()::text = (storage.foldername(name))[1]);
 
 -- Add folder_id, due_date, and reminder_id to notes and todo_lists
-alter table public.notes add column if not exists folder_id text references public.folders(id) on delete set null;
-alter table public.notes add column if not exists due_date timestamp with time zone;
-alter table public.notes add column if not exists reminder_id text;
+ALTER TABLE public.notes ADD COLUMN IF NOT EXISTS folder_id text REFERENCES public.folders(id) ON DELETE SET NULL;
+ALTER TABLE public.notes ADD COLUMN IF NOT EXISTS due_date timestamp with time zone;
+ALTER TABLE public.notes ADD COLUMN IF NOT EXISTS reminder_id text;
 
-alter table public.todo_lists add column if not exists folder_id text references public.folders(id) on delete set null;
-alter table public.todo_lists add column if not exists due_date timestamp with time zone;
-alter table public.todo_lists add column if not exists reminder_id text;
+ALTER TABLE public.todo_lists ADD COLUMN IF NOT EXISTS folder_id text REFERENCES public.folders(id) ON DELETE SET NULL;
+ALTER TABLE public.todo_lists ADD COLUMN IF NOT EXISTS due_date timestamp with time zone;
+ALTER TABLE public.todo_lists ADD COLUMN IF NOT EXISTS reminder_id text;
 
 -- Drop unused encryption keys from profiles
-alter table public.profiles drop column if exists encrypted_master_key;
-alter table public.profiles drop column if exists encryption_salt;
+ALTER TABLE public.profiles DROP COLUMN IF EXISTS encrypted_master_key;
+ALTER TABLE public.profiles DROP COLUMN IF EXISTS encryption_salt;
 
