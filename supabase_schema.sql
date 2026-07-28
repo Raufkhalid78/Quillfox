@@ -313,6 +313,7 @@ end;
 $$ language plpgsql security definer;
 
 drop trigger if exists enforce_note_limits on public.notes;
+DROP TRIGGER IF EXISTS enforce_note_limits ON public.notes;
 create trigger enforce_note_limits
   before insert on public.notes
   for each row execute procedure public.check_note_limits();
@@ -335,6 +336,7 @@ end;
 $$ language plpgsql security definer;
 
 drop trigger if exists enforce_todo_list_limits on public.todo_lists;
+DROP TRIGGER IF EXISTS enforce_todo_list_limits ON public.todo_lists;
 create trigger enforce_todo_list_limits
   before insert on public.todo_lists
   for each row execute procedure public.check_todo_list_limits();
@@ -360,6 +362,7 @@ end;
 $$ language plpgsql security definer;
 
 drop trigger if exists enforce_workspace_member_limits on public.workspace_members;
+DROP TRIGGER IF EXISTS enforce_workspace_member_limits ON public.workspace_members;
 create trigger enforce_workspace_member_limits
   before insert on public.workspace_members
   for each row execute procedure public.check_workspace_member_limits();
