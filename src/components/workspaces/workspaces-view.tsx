@@ -20,6 +20,7 @@ import {
 } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { format } from 'date-fns'
+import { generateMasterKey, exportKeyToString, encryptWithPublicKey } from '@/lib/e2ee'
 
 const stagger = {
   hidden: {},
@@ -150,12 +151,11 @@ export function WorkspacesView() {
     const title = newTitle.trim() || 'Untitled Workspace'
     const wsId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2)
     try {
-      let encryptedWorkspaceKey = null;
+      let encryptedWorkspaceKey: string | null = null;
 
       const isEncryptedSession = useAppStore.getState().isEncryptedSession;
       if (isEncryptedSession) {
         // 1. Generate AES Master Key for Workspace
-        const { generateMasterKey, exportKeyToString, encryptWithPublicKey } = require('@/lib/e2ee');
         const wsAesKey = await generateMasterKey();
         
         // Temporarily store in Zustand so `encryptWorkspaceTitle` can use it

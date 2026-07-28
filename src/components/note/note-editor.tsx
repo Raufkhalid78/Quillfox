@@ -174,7 +174,7 @@ export function NoteEditor() {
     } finally {
       setIsSaving(false)
     }
-  }, [selectedNoteId, isSaving, updateNoteContent, updateNoteTitle, note?.workspaceId])
+  }, [selectedNoteId, isSaving, updateNoteContent, updateNoteTitle, note])
 
   const handleTitleChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {

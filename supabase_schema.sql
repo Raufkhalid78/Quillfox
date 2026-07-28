@@ -357,3 +357,13 @@ create policy "Users can view their own folders" on public.folders for select us
 create policy "Users can insert their own folders" on public.folders for insert with check (auth.uid() = user_id);
 create policy "Users can update their own folders" on public.folders for update using (auth.uid() = user_id);
 create policy "Users can delete their own folders" on public.folders for delete using (auth.uid() = user_id);
+
+-- Add folder_id, due_date, and reminder_id to notes and todo_lists
+alter table public.notes add column if not exists folder_id text references public.folders(id) on delete set null;
+alter table public.notes add column if not exists due_date timestamp with time zone;
+alter table public.notes add column if not exists reminder_id text;
+
+alter table public.todo_lists add column if not exists folder_id text references public.folders(id) on delete set null;
+alter table public.todo_lists add column if not exists due_date timestamp with time zone;
+alter table public.todo_lists add column if not exists reminder_id text;
+

@@ -348,7 +348,7 @@ export function TodoList() {
         }
       }, 1500)
     },
-    [selectedTodoListId, updateTodoListTitle, todoList?.workspaceId, currentUser]
+    [selectedTodoListId, updateTodoListTitle, todoList, currentUser]
   )
 
   const [editingItemId, setEditingItemId] = useState<string | null>(null)

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { decryptNoteTitle, decryptNoteContent, encryptNoteTitle, encryptNoteContent } from '@/lib/encrypted-api'
 import { Button } from '@/components/ui/button'
@@ -32,13 +32,8 @@ export function NoteHistoryDialog({
   const [versions, setVersions] = useState<any[]>([])
   const [decryptedVersions, setDecryptedVersions] = useState<any[]>([])
 
-  useEffect(() => {
-    if (open && selectedNoteId) {
-      loadHistory()
-    }
-  }, [open, selectedNoteId])
-
-  const loadHistory = async () => {
+  const loadHistory = useCallback(async () => {
+    if (!selectedNoteId) return
     try {
       const { data, error } = await supabase
         .from('note_versions')
@@ -70,7 +65,13 @@ export function NoteHistoryDialog({
     } catch {
       toast.error('Failed to load history')
     }
-  }
+  }, [selectedNoteId, workspaceId])
+
+  useEffect(() => {
+    if (open && selectedNoteId) {
+      loadHistory()
+    }
+  }, [open, selectedNoteId, loadHistory])
 
   const handleSaveVersion = async () => {
     if (!selectedNoteId) return
