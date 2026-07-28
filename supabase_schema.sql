@@ -8,12 +8,10 @@ create table if not exists public.profiles (
   vault_auto_lock boolean default false not null,
   vault_lock_timeout integer default 15 not null,
   vault_passcode_hash text,
-  encrypted_master_key text,
   public_rsa_key text,
   encrypted_private_rsa_key text,
   trial_ends_at timestamp with time zone,
   extra_collaborators integer default 0 not null,
-  encryption_salt text,
   push_token text,
   updated_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
@@ -47,7 +45,6 @@ begin
     id, 
     email, 
     name,
-    encrypted_master_key,
     public_rsa_key,
     encrypted_private_rsa_key
   )
@@ -55,7 +52,6 @@ begin
     new.id, 
     new.email, 
     coalesce(new.raw_user_meta_data->>'name', ''),
-    new.raw_user_meta_data->>'encrypted_master_key',
     new.raw_user_meta_data->>'public_rsa_key',
     new.raw_user_meta_data->>'encrypted_private_rsa_key'
   );
@@ -366,4 +362,8 @@ alter table public.notes add column if not exists reminder_id text;
 alter table public.todo_lists add column if not exists folder_id text references public.folders(id) on delete set null;
 alter table public.todo_lists add column if not exists due_date timestamp with time zone;
 alter table public.todo_lists add column if not exists reminder_id text;
+
+-- Drop unused encryption keys from profiles
+alter table public.profiles drop column if exists encrypted_master_key;
+alter table public.profiles drop column if exists encryption_salt;
 
