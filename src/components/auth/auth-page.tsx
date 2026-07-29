@@ -253,26 +253,20 @@ export function AuthPage() {
         return
       }
 
-      if (!data.session) {
-        toast.success('Registration successful! Please check your email to verify your account.')
-        setActiveTab('login')
-        setLoginEmail(registerEmail.trim())
-        return
-      }
-
       // Show recovery key modal
       setNewRecoveryKey(recoveryKey)
       
       // Delay routing/login until they acknowledge the recovery key
       // The actual login/routing logic is handled in the modal's acknowledge handler
-      login({ 
-        id: user.id, 
-        email: user.email!, 
-        name: registerName.trim(),
-        createdAt: user.created_at
-      })
-
-      setEncryptionKey(masterKey, salt)
+      if (data.session) {
+        login({ 
+          id: user.id, 
+          email: user.email!, 
+          name: registerName.trim(),
+          createdAt: user.created_at
+        })
+        setEncryptionKey(masterKey, salt)
+      }
     } catch {
       toast.error('Network error. Please try again.')
     } finally {
