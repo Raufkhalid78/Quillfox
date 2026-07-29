@@ -13,7 +13,7 @@ export function AuthStateProvider({ children }: { children: React.ReactNode }) {
       // If the backend session dies (user deleted, token revoked, or signed out locally)
       // and we still have a local currentUser in Zustand, we must clear it to avoid
       // leaving the user stranded on the Vault Locked screen.
-      if (event === 'SIGNED_OUT' || (event === 'INITIAL_SESSION' && !session) || event === 'USER_DELETED') {
+      if (event === 'SIGNED_OUT' || (event === 'INITIAL_SESSION' && !session)) {
         const store = useAppStore.getState()
         if (store.currentUser) {
           store.logout()
