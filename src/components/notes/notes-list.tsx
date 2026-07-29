@@ -80,7 +80,7 @@ export function NotesList() {
         isPinned: n.is_pinned,
         isArchived: n.is_archived,
         createdAt: n.created_at,
-        updatedAt: n.updated_at,
+        updatedAt: n.updated_at, lockedBy: n.locked_by || null, lockedAt: n.locked_at || null,
       }))
 
       setNotes(formatted)
@@ -181,6 +181,8 @@ export function NotesList() {
         isArchived: note.is_archived,
         createdAt: note.created_at,
         updatedAt: note.updated_at,
+        lockedBy: null,
+        lockedAt: null,
       }
 
       addNote(formatted)

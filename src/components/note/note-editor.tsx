@@ -11,7 +11,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { toast } from 'sonner'
 import { AppSidebar } from '@/components/shared/app-sidebar'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
-import { ArrowLeft, Loader2, Paperclip } from 'lucide-react'
+import { ArrowLeft, Loader2, Paperclip, Lock } from 'lucide-react'
 import { NotionEditor } from './notion-editor'
 import { useParams, useRouter } from 'next/navigation'
 import { NoteHeader } from './note-header'
@@ -41,6 +41,9 @@ export function NoteEditor() {
   const [historyOpen, setHistoryOpen] = useState(false)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   
+  const [isLockedByOther, setIsLockedByOther] = useState(false)
+  const [lockedByInfo, setLockedByInfo] = useState<{name: string, email: string} | null>(null)
+
   const titleRef = useRef(title)
   const contentRef = useRef(content)
   const lastVersionSaveTime = useRef(Date.now())
@@ -57,13 +60,19 @@ export function NoteEditor() {
 
   // Load note data & decrypt + subscribe to realtime updates
   useEffect(() => {
-    if (!selectedNoteId) return
+    if (!selectedNoteId || !currentUser) return
     setInitialLoad(true)
     const loadNote = async () => {
       try {
+        // Attempt to acquire lock first
+        const { data: lockAcquired } = await supabase.rpc('acquire_note_lock', {
+          p_note_id: selectedNoteId,
+          p_user_id: currentUser.id
+        })
+
         const { data, error } = await supabase
           .from('notes')
-          .select('*')
+          .select('*, locker:profiles!notes_locked_by_fkey(id, name, email)')
           .eq('id', selectedNoteId)
           .single()
 
@@ -71,6 +80,11 @@ export function NoteEditor() {
           toast.error('Failed to load note')
           router.push('/dashboard/notes')
           return
+        }
+
+        if (!lockAcquired && data.locked_by !== currentUser.id) {
+          setIsLockedByOther(true)
+          setLockedByInfo(Array.isArray(data.locker) ? data.locker[0] : data.locker)
         }
 
         const decryptedTitle = await decryptNoteTitle(data.title, data.workspace_id)
@@ -98,6 +112,17 @@ export function NoteEditor() {
           filter: `id=eq.${selectedNoteId}`,
         },
         async (payload) => {
+          // Check for lock changes
+          if (payload.new.locked_by && payload.new.locked_by !== currentUser.id) {
+             setIsLockedByOther(true)
+             // Refetch locker info
+             const { data: lockerData } = await supabase.from('profiles').select('name, email').eq('id', payload.new.locked_by).single()
+             if (lockerData) setLockedByInfo(lockerData)
+          } else if (!payload.new.locked_by) {
+             setIsLockedByOther(false)
+             setLockedByInfo(null)
+          }
+
           // Only sync if the user is not actively typing and hasn't just saved
           if (!saveTimeoutRef.current && Date.now() - lastLocalSaveTimeRef.current > 2000) {
             try {
@@ -115,8 +140,12 @@ export function NoteEditor() {
 
     return () => {
       supabase.removeChannel(channel)
+      supabase.rpc('release_note_lock', {
+        p_note_id: selectedNoteId,
+        p_user_id: currentUser.id
+      }).then(res => { if(res.error) console.error(res.error) })
     }
-  }, [selectedNoteId, router])
+  }, [selectedNoteId, router, currentUser])
 
   // Auto-save debounced (with encryption)
   const saveContent = useCallback(async () => {
@@ -445,6 +474,21 @@ export function NoteEditor() {
                   </div>
                 </div>
                 <div className="p-4">
+                  {/* Lock Banner */}
+                  {isLockedByOther && lockedByInfo && (
+                    <div className="mb-4 bg-orange-500/10 border border-orange-500/20 rounded-xl p-3 flex items-center gap-3">
+                      <div className="p-2 bg-orange-500/20 rounded-full shrink-0">
+                        <Lock className="w-4 h-4 text-orange-500" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-orange-600 dark:text-orange-400">Read-Only Mode</p>
+                        <p className="text-xs text-orange-600/80 dark:text-orange-400/80 mt-0.5">
+                          {lockedByInfo.name || lockedByInfo.email} is currently editing this note.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Attachments Section */}
                   <NoteAttachments
                     attachments={note?.attachments}
@@ -454,6 +498,8 @@ export function NoteEditor() {
 
                   {/* Notion-Style Markdown Editor */}
                   <NotionEditor
+                    noteId={note?.id || ''}
+                    currentUser={currentUser}
                     content={content}
                     onChange={(val) => {
                       setContent(val)
@@ -471,7 +517,7 @@ export function NoteEditor() {
                         }
                       }, 1500)
                     }}
-                    disabled={initialLoad}
+                    disabled={initialLoad || isLockedByOther}
                   />
                 </div>
               </>

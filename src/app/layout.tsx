@@ -24,7 +24,7 @@ export const metadata: Metadata = {
   keywords: ["QuillFox", "productivity", "notes", "todo", "encryption", "workspace"],
   authors: [{ name: "QuillFox Team" }],
   icons: {
-    icon: "/logo.svg",
+    icon: "/icon.svg",
   },
   openGraph: {
     title: "QuillFox - Your Encrypted Workspace",

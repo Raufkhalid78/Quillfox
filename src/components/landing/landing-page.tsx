@@ -477,6 +477,7 @@ export function LandingPage() {
           <div className="flex gap-4 mt-4 md:mt-0">
             <Button variant="link" className="text-white/40 hover:text-white p-0 h-auto" onClick={() => router.push('/privacy')}>Privacy Policy</Button>
             <Button variant="link" className="text-white/40 hover:text-white p-0 h-auto" onClick={() => router.push('/terms')}>Terms of Service</Button>
+            <Button variant="link" className="text-white/40 hover:text-white p-0 h-auto" onClick={() => router.push('/refund')}>Refund Policy</Button>
           </div>
         </footer>
 

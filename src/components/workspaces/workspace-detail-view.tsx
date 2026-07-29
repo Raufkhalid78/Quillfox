@@ -365,6 +365,8 @@ export function WorkspaceDetailView() {
         isArchived: note.is_archived,
         createdAt: note.created_at,
         updatedAt: note.updated_at,
+        lockedBy: null,
+        lockedAt: null,
       }
 
       addNote(formatted)
@@ -424,6 +426,8 @@ export function WorkspaceDetailView() {
         isArchived: todoList.is_archived,
         createdAt: todoList.created_at,
         updatedAt: todoList.updated_at,
+        lockedBy: null,
+        lockedAt: null,
         items: [],
       }
 

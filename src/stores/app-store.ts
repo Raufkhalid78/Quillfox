@@ -46,6 +46,8 @@ export interface NoteItem {
   isArchived: boolean
   createdAt: string
   updatedAt: string
+  lockedBy: string | null
+  lockedAt: string | null
 }
 
 export interface TodoItemData {

@@ -108,7 +108,7 @@ export function ArchiveView() {
         isPinned: n.is_pinned,
         isArchived: n.is_archived,
         createdAt: n.created_at,
-        updatedAt: n.updated_at,
+        updatedAt: n.updated_at, lockedBy: n.locked_by || null, lockedAt: n.locked_at || null,
       }))
 
       const formattedTodos = (todosRes.data || []).map((t: any) => ({
@@ -196,7 +196,7 @@ export function ArchiveView() {
           isPinned: n.is_pinned,
           isArchived: n.is_archived,
           createdAt: n.created_at,
-          updatedAt: n.updated_at,
+          updatedAt: n.updated_at, lockedBy: n.locked_by || null, lockedAt: n.locked_at || null,
         })))
       }
 

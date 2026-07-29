@@ -59,7 +59,12 @@ import { DashboardQuickActions } from './dashboard-quick-actions'
 import { DashboardRecentItems } from './dashboard-recent-items'
 import { useTheme } from 'next-themes'
 import { format, formatDistanceToNow } from 'date-fns'
-import { DashboardAnalytics } from './dashboard-analytics'
+import dynamic from 'next/dynamic'
+
+const DashboardAnalytics = dynamic(
+  () => import('./dashboard-analytics').then((mod) => mod.DashboardAnalytics),
+  { ssr: false }
+)
 
 const stagger = {
   hidden: {},
@@ -174,6 +179,8 @@ export function Dashboard() {
         isArchived: n.is_archived,
         createdAt: n.created_at,
         updatedAt: n.updated_at,
+        lockedBy: n.locked_by || null,
+        lockedAt: n.locked_at || null,
       }))
       setNotes(formattedNotes)
 
@@ -328,7 +335,7 @@ export function Dashboard() {
         isPinned: data.is_pinned,
         isArchived: data.is_archived,
         createdAt: data.created_at,
-        updatedAt: data.updated_at,
+        updatedAt: data.updated_at, lockedBy: data.locked_by || null, lockedAt: data.locked_at || null,
       }
 
       addNote(formatted)
@@ -372,7 +379,7 @@ export function Dashboard() {
         isPinned: data.is_pinned,
         isArchived: data.is_archived,
         createdAt: data.created_at,
-        updatedAt: data.updated_at,
+        updatedAt: data.updated_at, lockedBy: data.locked_by || null, lockedAt: data.locked_at || null,
         items: [],
       }
 

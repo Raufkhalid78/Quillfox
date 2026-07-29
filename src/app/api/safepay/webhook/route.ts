@@ -1,14 +1,17 @@
 import { NextResponse } from 'next/server'
-import { Safepay } from '@sfpy/node-sdk'
+import Safepay from '@sfpy/node-core'
 import { createClient } from '@supabase/supabase-js'
 
 export async function POST(req: Request) {
   try {
-    const safepay = new Safepay({
-      environment: (process.env.NODE_ENV === 'production' && process.env.SAFEPAY_API_KEY ? 'production' : 'sandbox') as any,
-      apiKey: process.env.SAFEPAY_API_KEY || 'dummy',
-      v1Secret: process.env.SAFEPAY_V1_SECRET || 'dummy',
-      webhookSecret: process.env.SAFEPAY_WEBHOOK_SECRET || 'dummy',
+    const isProd = process.env.NODE_ENV === 'production' && !!process.env.SAFEPAY_API_KEY;
+    const environment = isProd ? 'production' : 'sandbox';
+    const host = isProd ? 'https://api.getsafepay.com' : 'https://sandbox.api.getsafepay.com';
+    const secretKey = process.env.SAFEPAY_API_KEY || 'sec_dummy_key_for_dev';
+
+    const safepay = new Safepay(secretKey, {
+      authType: 'secret',
+      host: host,
     })
     
     const supabaseAdmin = createClient(

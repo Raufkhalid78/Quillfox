@@ -1,196 +1,69 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { useEffect, useState, useMemo, useRef } from 'react'
+import { useEditor, EditorContent } from '@tiptap/react'
+import StarterKit from '@tiptap/starter-kit'
+import Placeholder from '@tiptap/extension-placeholder'
+import Collaboration from '@tiptap/extension-collaboration'
+import CollaborationCursor from '@tiptap/extension-collaboration-cursor'
+import { Markdown } from 'tiptap-markdown'
 import { useAppStore } from '@/stores/app-store'
-import { toast } from 'sonner'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Heading1, Heading2, Heading3, List, ListOrdered, CheckSquare, Code, Quote, AlertCircle, Bold, Italic, Sparkles } from 'lucide-react'
+import { Sparkles } from 'lucide-react'
+import * as Y from 'yjs'
+import { SupabaseProvider } from '@supabase-labs/y-supabase'
+import { supabase } from '@/lib/supabase'
 
 interface NotionEditorProps {
+  noteId: string
+  currentUser: any
   content: string
   onChange: (value: string) => void
   disabled?: boolean
 }
 
-export function NotionEditor({ content, onChange, disabled }: NotionEditorProps) {
+// Generate a stable color based on a string (like a user ID)
+const getColor = (str: string) => {
+  let hash = 0
+  for (let i = 0; i < str.length; i++) {
+    hash = str.charCodeAt(i) + ((hash << 5) - hash)
+  }
+  const color = Math.floor(Math.abs((Math.sin(hash) * 10000) % 1 * 16777215)).toString(16)
+  return '#' + '000000'.substring(0, 6 - color.length) + color
+}
+
+export function NotionEditor({ noteId, currentUser, content, onChange, disabled }: NotionEditorProps) {
   const userTier = useAppStore((s) => s.userTier)
-  const setTier = useAppStore((s) => s.setTier)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const [provider, setProvider] = useState<SupabaseProvider | null>(null)
   
-  // Slash menu state
-  const [slashMenuOpen, setSlashMenuOpen] = useState(false)
-  const [slashMenuCoords, setSlashMenuCoords] = useState({ top: 0, left: 0 })
-  const [slashFilter, setSlashFilter] = useState('')
-  const [selectedMenuIdx, setSelectedMenuIdx] = useState(0)
+  // 1. Initialize a Yjs Document. One per note.
+  const ydoc = useMemo(() => new Y.Doc(), [noteId])
 
-  // Bubble toolbar state
-  const [bubbleOpen, setBubbleOpen] = useState(false)
-  const [bubbleCoords, setBubbleCoords] = useState({ top: 0, left: 0 })
-
-  const menuItems = [
-    { label: 'Heading 1', icon: Heading1, md: '# ' },
-    { label: 'Heading 2', icon: Heading2, md: '## ' },
-    { label: 'Heading 3', icon: Heading3, md: '### ' },
-    { label: 'Todo List', icon: CheckSquare, md: '- [ ] ' },
-    { label: 'Bullet List', icon: List, md: '- ' },
-    { label: 'Numbered List', icon: ListOrdered, md: '1. ' },
-    { label: 'Code Block', icon: Code, md: '```\n\n```' },
-    { label: 'Quote', icon: Quote, md: '> ' },
-    { label: 'Callout Box', icon: AlertCircle, md: '> [!NOTE]\n> ' },
-  ]
-
-  const filteredMenuItems = menuItems.filter(item => 
-    item.label.toLowerCase().includes(slashFilter.toLowerCase())
-  )
-
+  // 2. Setup the Supabase Realtime Provider
   useEffect(() => {
-    if (selectedMenuIdx >= filteredMenuItems.length) {
-      setSelectedMenuIdx(0)
+    if (!noteId || !currentUser) return
+
+    const channelName = `yjs-note-${noteId}`
+    const p = new SupabaseProvider(channelName, ydoc, supabase as any)
+
+    // Setup awareness (Cursor + Avatar Presence)
+    const userColor = getColor(currentUser.id)
+    // @ts-ignore
+    p.awareness.setLocalStateField('user', {
+      name: currentUser.name || currentUser.email,
+      color: userColor,
+      avatar: currentUser.avatar || null
+    })
+
+    setProvider(p)
+
+    return () => {
+      p.destroy()
     }
-  }, [filteredMenuItems, selectedMenuIdx])
+  }, [noteId, currentUser, ydoc])
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (disabled || userTier === 'free') return
-
-    if (slashMenuOpen) {
-      if (e.key === 'ArrowDown') {
-        e.preventDefault()
-        setSelectedMenuIdx(prev => (prev + 1) % filteredMenuItems.length)
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault()
-        setSelectedMenuIdx(prev => (prev - 1 + filteredMenuItems.length) % filteredMenuItems.length)
-      } else if (e.key === 'Enter') {
-        e.preventDefault()
-        if (filteredMenuItems[selectedMenuIdx]) {
-          applyMarkdown(filteredMenuItems[selectedMenuIdx].md)
-        }
-      } else if (e.key === 'Escape') {
-        e.preventDefault()
-        setSlashMenuOpen(false)
-      }
-    }
-  }
-
-  const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const val = e.target.value
-    onChange(val)
-
-    if (userTier === 'free') return
-
-    // Detect slash command trigger
-    const cursorIdx = e.target.selectionStart
-    const textBeforeCursor = val.substring(0, cursorIdx)
-    const lines = textBeforeCursor.split('\n')
-    const currentLine = lines[lines.length - 1]
-
-    if (currentLine.startsWith('/')) {
-      setSlashFilter(currentLine.substring(1))
-      setSlashMenuOpen(true)
-      updateMenuPosition(e.target)
-    } else {
-      setSlashMenuOpen(false)
-    }
-  }
-
-  const updateMenuPosition = (textarea: HTMLTextAreaElement) => {
-    const { selectionStart } = textarea
-    // Simple position calculation near the typing area
-    const lines = textarea.value.substring(0, selectionStart).split('\n')
-    const lineCount = lines.length
-    const charCount = lines[lines.length - 1].length
-
-    const top = Math.min(100 + lineCount * 20, textarea.clientHeight - 200)
-    const left = Math.min(20 + charCount * 8, textarea.clientWidth - 200)
-
-    setSlashMenuCoords({ top, left })
-  }
-
-  const handleSelect = (e: React.SyntheticEvent<HTMLTextAreaElement>) => {
-    if (userTier === 'free') return
-    const textarea = e.currentTarget
-    const { selectionStart, selectionEnd } = textarea
-
-    if (selectionStart !== selectionEnd) {
-      const textBefore = textarea.value.substring(0, selectionStart)
-      const lines = textBefore.split('\n')
-      const top = Math.max(30 + (lines.length - 1) * 20 - textarea.scrollTop, 10)
-      const left = Math.min(80 + lines[lines.length - 1].length * 8, textarea.clientWidth - 150)
-      
-      setBubbleCoords({ top, left })
-      setBubbleOpen(true)
-    } else {
-      setBubbleOpen(false)
-    }
-  }
-
-  const applyMarkdown = (markdown: string) => {
-    const textarea = textareaRef.current
-    if (!textarea) return
-
-    const { selectionStart, selectionEnd } = textarea
-    const val = textarea.value
-
-    let newVal = ''
-    let newCursorIdx = 0
-
-    if (markdown.startsWith('#') || markdown.startsWith('-') || markdown.startsWith('1.') || markdown.startsWith('>')) {
-      // Line transform command
-      const textBefore = val.substring(0, selectionStart)
-      const textAfter = val.substring(selectionStart)
-      const linesBefore = textBefore.split('\n')
-      // Remove the slash char
-      linesBefore[linesBefore.length - 1] = markdown + linesBefore[linesBefore.length - 1].replace('/', '')
-      
-      newVal = linesBefore.join('\n') + textAfter
-      newCursorIdx = newVal.length - textAfter.length
-    } else {
-      // Wrap/Insert command
-      const textBefore = val.substring(0, selectionStart).replace(/\/$/, '')
-      const selectedText = val.substring(selectionStart, selectionEnd)
-      const textAfter = val.substring(selectionEnd)
-
-      if (markdown.includes('\n\n')) {
-        // e.g. code block
-        newVal = textBefore + '```\n' + (selectedText || 'code') + '\n```' + textAfter
-        newCursorIdx = textBefore.length + 4 + (selectedText || 'code').length
-      } else {
-        // inline styling wrap
-        newVal = textBefore + markdown + selectedText + markdown + textAfter
-        newCursorIdx = textBefore.length + markdown.length + selectedText.length + markdown.length
-      }
-    }
-
-    onChange(newVal)
-    setSlashMenuOpen(false)
-    setBubbleOpen(false)
-
-    // Reset cursor focus
-    setTimeout(() => {
-      textarea.focus()
-      textarea.setSelectionRange(newCursorIdx, newCursorIdx)
-    }, 50)
-  }
-
+  // Let's refactor the useEditor to only mount when provider is ready to avoid complex dynamic injection.
   return (
-    <div className="relative w-full">
-      {/* Notion Editor Textarea */}
-      <textarea
-        ref={textareaRef}
-        value={content}
-        onChange={handleTextareaChange}
-        onKeyDown={handleKeyDown}
-        onSelect={handleSelect}
-        className={`w-full min-h-[60vh] resize-y rounded-xl border border-border/50 bg-card/50 p-6 text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all placeholder:text-muted-foreground/40 font-mono`}
-        placeholder={
-          userTier !== 'free' 
-            ? "Type '/' for Notion-Style slash commands...\nHighlight text to open the formatting bubble."
-            : "Start writing..."
-        }
-        disabled={disabled}
-      />
-
+    <div className="relative w-full notion-editor-wrapper">
       {/* Free Tier Banner */}
       {userTier === 'free' && (
         <div className="mb-4 p-3 bg-primary/10 border border-primary/20 rounded-xl flex items-center justify-between">
@@ -199,7 +72,7 @@ export function NotionEditor({ content, onChange, disabled }: NotionEditorProps)
               <Sparkles className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="font-semibold text-sm">Notion-Style Slash Commands Locked</h3>
+              <h3 className="font-semibold text-sm">Advanced Formatting Locked</h3>
               <p className="text-xs text-muted-foreground">
                 Upgrade to Premium to unlock '/' commands, formatting bubbles, and advanced blocks.
               </p>
@@ -208,74 +81,131 @@ export function NotionEditor({ content, onChange, disabled }: NotionEditorProps)
         </div>
       )}
 
-      {/* Floating Slash Command Dropdown */}
-      <AnimatePresence>
-        {slashMenuOpen && filteredMenuItems.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 10 }}
-            className="absolute z-[80] w-52 max-h-60 overflow-y-auto bg-popover border border-border rounded-xl shadow-xl p-1.5 space-y-0.5"
-            style={{ top: slashMenuCoords.top, left: slashMenuCoords.left }}
-          >
-            <p className="text-[10px] text-muted-foreground px-2 py-1 select-none">Basic Blocks</p>
-            {filteredMenuItems.map((item, idx) => {
-              const Icon = item.icon
-              return (
-                <button
-                  key={item.label}
-                  className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs text-left transition-colors ${
-                    idx === selectedMenuIdx ? 'bg-primary/15 text-primary font-medium' : 'hover:bg-muted text-foreground'
-                  }`}
-                  onClick={() => applyMarkdown(item.md)}
-                >
-                  <Icon className="w-3.5 h-3.5" />
-                  <span>{item.label}</span>
-                </button>
-              )
-            })}
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {provider ? (
+        <EditorWithProvider
+          ydoc={ydoc}
+          provider={provider}
+          content={content}
+          onChange={onChange}
+          disabled={disabled}
+          userTier={userTier}
+        />
+      ) : (
+        <div className="w-full min-h-[60vh] rounded-xl border border-border/50 bg-card/50 flex items-center justify-center">
+          <span className="text-muted-foreground text-sm animate-pulse">Connecting to live room...</span>
+        </div>
+      )}
+    </div>
+  )
+}
 
-      {/* Floating Selection Formatting Bubble */}
-      <AnimatePresence>
-        {bubbleOpen && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.95 }}
-            className="absolute z-[80] bg-popover border border-border rounded-lg shadow-lg flex items-center p-1 gap-1"
-            style={{ top: bubbleCoords.top - 40, left: bubbleCoords.left }}
-          >
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 hover:bg-muted text-muted-foreground hover:text-foreground"
-              onClick={() => applyMarkdown('**')}
-            >
-              <Bold className="w-3.5 h-3.5" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 hover:bg-muted text-muted-foreground hover:text-foreground"
-              onClick={() => applyMarkdown('*')}
-            >
-              <Italic className="w-3.5 h-3.5" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 hover:bg-muted text-muted-foreground hover:text-foreground"
-              onClick={() => applyMarkdown('`')}
-            >
-              <Code className="w-3.5 h-3.5" />
-            </Button>
+// Separate component to handle editor initialization cleanly with a ready provider
+function EditorWithProvider({ ydoc, provider, content, onChange, disabled, userTier }: any) {
+  const initialized = useRef(false)
 
-          </motion.div>
-        )}
-      </AnimatePresence>
+  const editor = useEditor({
+    extensions: [
+      StarterKit,
+      Markdown,
+      Placeholder.configure({
+        placeholder: userTier !== 'free'
+          ? "Type '/' for Notion-Style slash commands...\nHighlight text to open the formatting bubble."
+          : "Start writing...",
+      }),
+      Collaboration.configure({
+        document: ydoc,
+      }),
+      CollaborationCursor.configure({
+        provider: provider,
+        // @ts-ignore
+        user: provider.awareness.getLocalState()?.user,
+      }),
+    ],
+    editable: !disabled,
+    onUpdate: ({ editor }) => {
+      // Extract markdown
+      const markdown = (editor.storage as any).markdown.getMarkdown()
+      onChange(markdown)
+    },
+    editorProps: {
+      attributes: {
+        class: 'prose prose-sm dark:prose-invert max-w-none focus:outline-none min-h-[60vh] p-6 text-sm leading-relaxed font-sans tiptap-editor',
+      },
+    },
+  })
+
+  // Set initial content if the Yjs doc is empty and we are the lock holder (or just first to load)
+  useEffect(() => {
+    if (editor && !initialized.current) {
+      initialized.current = true
+      // Check if the Ydoc is empty by looking at its content length
+      const ytext = ydoc.getXmlFragment('default')
+      if (ytext.length === 0 && content) {
+        editor.commands.setContent(content)
+      }
+    }
+  }, [editor, content, ydoc])
+
+  // Sync disabled state dynamically
+  useEffect(() => {
+    if (editor) {
+      editor.setEditable(!disabled)
+    }
+  }, [disabled, editor])
+
+  return (
+    <div className={`w-full min-h-[60vh] rounded-xl border border-border/50 bg-card/50 transition-all ${disabled ? 'opacity-50 pointer-events-none' : 'focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary/40'}`}>
+      <EditorContent editor={editor} />
+      
+      {/* Collaboration Cursor Styles */}
+      <style jsx global>{`
+        .collaboration-cursor__caret {
+          position: relative;
+          margin-left: -1px;
+          margin-right: -1px;
+          border-left: 2px solid #000;
+          border-right: 2px solid #000;
+          word-break: normal;
+          pointer-events: none;
+        }
+
+        .collaboration-cursor__label {
+          position: absolute;
+          top: -1.4em;
+          left: -1px;
+          font-size: 12px;
+          font-style: normal;
+          font-weight: 600;
+          line-height: normal;
+          user-select: none;
+          color: #000;
+          padding: 0.1rem 0.3rem;
+          border-radius: 3px 3px 3px 0;
+          white-space: nowrap;
+          pointer-events: none;
+        }
+
+        .tiptap-editor p.is-editor-empty:first-child::before {
+          content: attr(data-placeholder);
+          float: left;
+          color: #9ca3af;
+          pointer-events: none;
+          height: 0;
+        }
+        .tiptap-editor h1 { font-size: 1.875rem; font-weight: 700; margin-top: 1.5rem; margin-bottom: 0.5rem; }
+        .tiptap-editor h2 { font-size: 1.5rem; font-weight: 600; margin-top: 1.25rem; margin-bottom: 0.5rem; }
+        .tiptap-editor h3 { font-size: 1.25rem; font-weight: 600; margin-top: 1rem; margin-bottom: 0.5rem; }
+        .tiptap-editor ul { list-style-type: disc; padding-left: 1.5rem; margin-top: 0.5rem; margin-bottom: 0.5rem; }
+        .tiptap-editor ol { list-style-type: decimal; padding-left: 1.5rem; margin-top: 0.5rem; margin-bottom: 0.5rem; }
+        .tiptap-editor blockquote { border-left: 4px solid #d1d5db; padding-left: 1rem; color: #6b7280; font-style: italic; }
+        .dark .tiptap-editor blockquote { border-left-color: #4b5563; color: #9ca3af; }
+        .tiptap-editor pre { background: #1f2937; color: #f9fafb; padding: 1rem; rounded: 0.5rem; overflow-x: auto; margin-top: 0.5rem; margin-bottom: 0.5rem; }
+        .tiptap-editor code { background: #e5e7eb; color: #111827; padding: 0.125rem 0.25rem; rounded: 0.25rem; font-size: 0.875em; }
+        .dark .tiptap-editor code { background: #374151; color: #f9fafb; }
+        .tiptap-editor pre code { background: transparent; color: inherit; padding: 0; }
+        .tiptap-editor mark { background-color: #fef08a; padding: 0.125rem 0; border-radius: 0.125rem; }
+        .dark .tiptap-editor mark { background-color: #854d0e; color: #f9fafb; }
+      `}</style>
     </div>
   )
 }

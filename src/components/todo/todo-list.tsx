@@ -56,17 +56,23 @@ export function TodoList() {
 
   const todoList = todoLists.find((t) => t.id === selectedTodoListId)
 
-  const isLocked = false
-  const lockedByUser = null
+  const [isLockedByOther, setIsLockedByOther] = useState(false)
+  const [lockedByInfo, setLockedByInfo] = useState<{name: string, email: string} | null>(null)
 
   // Load todo list data & decrypt + subscribe to realtime updates
   useEffect(() => {
-    if (!selectedTodoListId) return
+    if (!selectedTodoListId || !currentUser) return
     const loadTodoList = async () => {
       try {
+        // Attempt to acquire lock first
+        const { data: lockAcquired } = await supabase.rpc('acquire_todo_list_lock', {
+          p_list_id: selectedTodoListId,
+          p_user_id: currentUser.id
+        })
+
         const { data: listData, error: listError } = await supabase
           .from('todo_lists')
-          .select('*, todo_items(*)')
+          .select('*, todo_items(*), locker:profiles!todo_lists_locked_by_fkey(id, name, email)')
           .eq('id', selectedTodoListId)
           .single()
 
@@ -74,6 +80,11 @@ export function TodoList() {
           toast.error('Failed to load todo list')
           router.push('/dashboard/todos')
           return
+        }
+
+        if (!lockAcquired && listData.locked_by !== currentUser.id) {
+          setIsLockedByOther(true)
+          setLockedByInfo(Array.isArray(listData.locker) ? listData.locker[0] : listData.locker)
         }
 
         const decryptedTitle = await decryptTodoTitle(listData.title, listData.workspace_id)
@@ -100,8 +111,8 @@ export function TodoList() {
     loadTodoList()
 
     // Subscribe to realtime database changes for this list
-    const channel = supabase
-      .channel(`todo-list-${selectedTodoListId}`)
+    const itemsChannel = supabase
+      .channel(`todo-items-${selectedTodoListId}`)
       .on(
         'postgres_changes',
         {
@@ -118,10 +129,39 @@ export function TodoList() {
       )
       .subscribe()
 
+    // Subscribe to todo_lists changes for locks
+    const listChannel = supabase
+      .channel(`todo-list-${selectedTodoListId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'todo_lists',
+          filter: `id=eq.${selectedTodoListId}`,
+        },
+        async (payload) => {
+          if (payload.new.locked_by && payload.new.locked_by !== currentUser.id) {
+            setIsLockedByOther(true)
+            const { data: lockerData } = await supabase.from('profiles').select('name, email').eq('id', payload.new.locked_by).single()
+            if (lockerData) setLockedByInfo(lockerData)
+          } else if (!payload.new.locked_by) {
+            setIsLockedByOther(false)
+            setLockedByInfo(null)
+          }
+        }
+      )
+      .subscribe()
+
     return () => {
-      supabase.removeChannel(channel)
+      supabase.removeChannel(itemsChannel)
+      supabase.removeChannel(listChannel)
+      supabase.rpc('release_todo_list_lock', {
+        p_list_id: selectedTodoListId,
+        p_user_id: currentUser.id
+      }).then(res => { if(res.error) console.error(res.error) })
     }
-  }, [selectedTodoListId, router])
+  }, [selectedTodoListId, router, currentUser])
 
   // Calculate progress
   const completedCount = items.filter((i) => i.completed).length
@@ -190,7 +230,7 @@ export function TodoList() {
   // Toggle item completion
   const handleToggle = useCallback(
     async (itemId: string) => {
-      if (isLocked) return
+      if (isLockedByOther) return
       const targetItem = itemsRef.current.find(item => item.id === itemId)
       const isNowCompleted = targetItem ? !targetItem.completed : false
 
@@ -215,12 +255,12 @@ export function TodoList() {
         await saveItemsFn(newItems)
       }, 500)
     },
-    [isLocked, saveItemsFn]
+    [isLockedByOther, saveItemsFn]
   )
 
   // Add new item
   const handleAddItem = async () => {
-    if (!newItemText.trim() || isLocked || !selectedTodoListId) return
+    if (!newItemText.trim() || isLockedByOther || !selectedTodoListId) return
     const itemId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2)
     try {
       // Encrypt title before sending
@@ -271,7 +311,7 @@ export function TodoList() {
 
   // Delete item
   const handleDeleteItem = async (itemId: string) => {
-    if (isLocked) return
+    if (isLockedByOther) return
     const updatedItems = itemsRef.current.filter((i) => i.id !== itemId).map((i, idx) => ({ ...i, order: idx }))
     setItems(updatedItems)
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
@@ -491,7 +531,7 @@ export function TodoList() {
             onChange={handleTitleChange}
             className="flex-1 min-w-0 border-0 focus-visible:ring-0 text-base sm:text-lg font-semibold px-1 h-auto py-1 bg-transparent"
             placeholder="Untitled Todo List"
-            disabled={isLocked}
+            disabled={isLockedByOther}
           />
 
           <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
@@ -612,7 +652,7 @@ export function TodoList() {
       </header>
 
       {/* Lock Banner */}
-      {isLocked && (
+      {isLockedByOther && lockedByInfo && (
         <motion.div
           initial={{ height: 0, opacity: 0 }}
           animate={{ height: 'auto', opacity: 1 }}
@@ -621,9 +661,7 @@ export function TodoList() {
           <div className="max-w-3xl mx-auto px-4 py-2 flex items-center gap-2 text-sm text-amber-800 dark:text-amber-200">
             <Lock className="w-4 h-4" />
             <span>
-              {lockedByUser === currentUser?.name
-                ? 'You are editing this list'
-                : `${lockedByUser} is currently editing — read-only mode`}
+              {lockedByInfo.name || lockedByInfo.email} is currently editing — read-only mode
             </span>
           </div>
         </motion.div>
@@ -659,7 +697,7 @@ export function TodoList() {
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: 20, height: 0 }}
                 transition={{ duration: 0.2 }}
-                draggable={!isLocked}
+                draggable={!isLockedByOther}
                 onDragStart={(e) => handleDragStart(e as unknown as React.DragEvent, item.id)}
                 onDragOver={(e) => handleDragOver(e as unknown as React.DragEvent, index)}
                 onDrop={(e) => handleDrop(e as unknown as React.DragEvent, index)}
@@ -669,7 +707,7 @@ export function TodoList() {
                 } ${item.completed ? 'bg-muted/50' : 'bg-card'}`}
               >
                 {/* Drag Handle */}
-                {!isLocked && (
+                {!isLockedByOther && (
                   <GripVertical className="w-4 h-4 text-muted-foreground/40 cursor-grab shrink-0" />
                 )}
 
@@ -677,7 +715,7 @@ export function TodoList() {
                 <Checkbox
                   checked={item.completed}
                   onCheckedChange={() => handleToggle(item.id)}
-                  disabled={isLocked}
+                  disabled={isLockedByOther}
                   className="shrink-0 data-[state=checked]:bg-[#6d28d9] data-[state=checked]:border-[#6d28d9]"
                 />
 
@@ -712,7 +750,7 @@ export function TodoList() {
                 ) : (
                   <span
                     onDoubleClick={() => {
-                      if (!isLocked && !item.completed) {
+                      if (!isLockedByOther && !item.completed) {
                         setEditingItemId(item.id)
                         setEditValue(item.title)
                       }
@@ -728,7 +766,7 @@ export function TodoList() {
                 )}
 
                 {/* Delete */}
-                {!isLocked && (
+                {!isLockedByOther && (
                   <Button
                     variant="ghost"
                     size="icon"
@@ -744,7 +782,7 @@ export function TodoList() {
         </AnimatePresence>
 
         {/* Add New Item */}
-        {!isLocked && (
+        {!isLockedByOther && (
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -768,7 +806,7 @@ export function TodoList() {
                       }
                     }}
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !isLocked) {
+                      if (e.key === 'Enter' && !isLockedByOther) {
                         handleAddItem()
                         if (isTyping.current && selectedTodoListId) {
                           isTyping.current = false
@@ -813,3 +851,4 @@ export function TodoList() {
     </div>
   )
 }
+

@@ -97,6 +97,8 @@ export function DashboardQuickActions({
         isArchived: note.is_archived,
         createdAt: note.created_at,
         updatedAt: note.updated_at,
+        lockedBy: null,
+        lockedAt: null,
       }
 
       addNote(formatted)
@@ -155,6 +157,8 @@ export function DashboardQuickActions({
         isArchived: data.is_archived,
         createdAt: data.created_at,
         updatedAt: data.updated_at,
+        lockedBy: null,
+        lockedAt: null,
         items: [],
       }
 
@@ -237,6 +241,8 @@ export function DashboardQuickActions({
         ownerId: data.owner_id,
         createdAt: data.created_at,
         updatedAt: data.updated_at,
+        lockedBy: null,
+        lockedAt: null,
         members: [{
           id: `member_${crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2)}`,
           userId: currentUser.id,
