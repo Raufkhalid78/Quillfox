@@ -6,6 +6,7 @@ import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "sonner"
 
 import { SentryProvider } from "@/components/sentry-provider"
+import { AuthStateProvider } from "@/components/auth-state-provider"
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -49,7 +50,9 @@ export default function RootLayout({
             enableSystem
             disableTransitionOnChange
           >
-            {children}
+            <AuthStateProvider>
+              {children}
+            </AuthStateProvider>
             <Toaster position="bottom-right" theme="system" richColors />
           </ThemeProvider>
         </SentryProvider>

@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { ShieldAlert, Trash2, ArrowLeft, Loader2 } from 'lucide-react';
 import Link from 'next/link';
+import { useAppStore } from '@/stores/app-store';
 
 export default function DeleteAccountScreen() {
   const [email, setEmail] = useState('');
@@ -70,6 +71,7 @@ export default function DeleteAccountScreen() {
       }
 
       await supabase.auth.signOut();
+      useAppStore.getState().logout();
       setSuccess(true);
     } catch (e: any) {
       setErrorMsg(e.message);
