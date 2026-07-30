@@ -2,12 +2,19 @@ import { NextResponse } from 'next/server'
 import Safepay from '@sfpy/node-core'
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
-
 export async function POST(req: Request) {
   try {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+    
+    if (!supabaseUrl || !supabaseServiceKey) {
+      console.warn('Supabase credentials missing, cannot verify auth');
+    }
+    
+    // We only create it if we have credentials, else the API call will fail gracefully later
+    const supabaseAdmin = supabaseUrl && supabaseServiceKey 
+      ? createClient(supabaseUrl, supabaseServiceKey)
+      : null;
     const isProd = process.env.NODE_ENV === 'production' && !!process.env.SAFEPAY_API_KEY;
     const environment = isProd ? 'production' : 'sandbox';
     const host = isProd ? 'https://api.getsafepay.com' : 'https://sandbox.api.getsafepay.com';
@@ -23,6 +30,10 @@ export async function POST(req: Request) {
     const authHeader = req.headers.get('Authorization')
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return NextResponse.json({ error: 'Unauthorized: missing or invalid Authorization header' }, { status: 401 })
+    }
+
+    if (!supabaseAdmin) {
+      return NextResponse.json({ error: 'Server misconfiguration: Database client not initialized' }, { status: 500 })
     }
 
     const token = authHeader.split(' ')[1]
