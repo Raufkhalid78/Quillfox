@@ -1,5 +1,10 @@
 import { NextResponse } from 'next/server'
 import Safepay from '@sfpy/node-core'
+import { createClient } from '@supabase/supabase-js'
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
 export async function POST(req: Request) {
   try {
@@ -15,11 +20,20 @@ export async function POST(req: Request) {
       host: host,
     });
 
-    const { tier, userId } = await req.json()
-    
-    if (!userId) {
-      return NextResponse.json({ error: 'Unauthorized: missing userId' }, { status: 401 })
+    const authHeader = req.headers.get('Authorization')
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return NextResponse.json({ error: 'Unauthorized: missing or invalid Authorization header' }, { status: 401 })
     }
+
+    const token = authHeader.split(' ')[1]
+    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token)
+    
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized: invalid token' }, { status: 401 })
+    }
+
+    const userId = user.id;
+    const { tier } = await req.json()
 
     // Determine amount based on tier (assuming PKR)
     let amount = 0;

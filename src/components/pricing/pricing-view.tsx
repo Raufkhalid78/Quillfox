@@ -203,12 +203,20 @@ export function PricingView() {
     }
 
     try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const accessToken = session?.access_token
+
+      if (!accessToken) {
+        throw new Error('Authentication required for checkout')
+      }
+
       const response = await fetch('/api/safepay/checkout', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`,
         },
-        body: JSON.stringify({ tier: selectedPlan.id, userId: currentUser.id }),
+        body: JSON.stringify({ tier: selectedPlan.id }),
       })
 
       const data = await response.json()

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import Safepay from '@sfpy/node-core'
 import { createClient } from '@supabase/supabase-js'
+import crypto from 'crypto'
 
 export async function POST(req: Request) {
   try {
@@ -25,25 +26,29 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Missing signature' }, { status: 400 })
     }
 
-    // Verify webhook payload
-    // Note: The specific validation method depends on Safepay SDK version. 
-    // Usually it expects the raw string payload and the signature header.
-    let event: any
-    try {
-      // Some versions of Safepay SDK have a `verifyWebhook` method on the main instance or a `verify` module
-      // If the SDK throws an error here, the signature is invalid.
-      // @ts-ignore
-      event = safepay.verify ? safepay.verify.webhook(rawBody, signature) : JSON.parse(rawBody)
-    } catch (err) {
-      console.error('Webhook verification failed:', err)
+    const webhookSecret = process.env.SAFEPAY_WEBHOOK_SECRET
+
+    if (!webhookSecret) {
+      console.error('Webhook secret is not configured in environment variables.')
+      return NextResponse.json({ error: 'Server configuration error' }, { status: 500 })
+    }
+
+    // Safepay calculates HMAC-SHA256 of the raw body using the secret key
+    const expectedSignature = crypto
+      .createHmac('sha256', webhookSecret)
+      .update(rawBody)
+      .digest('hex')
+
+    const expectedBuffer = Buffer.from(expectedSignature, 'hex')
+    const receivedBuffer = Buffer.from(signature, 'hex')
+
+    // Avoid timing attacks
+    if (expectedBuffer.length !== receivedBuffer.length || !crypto.timingSafeEqual(expectedBuffer, receivedBuffer)) {
+      console.error('Webhook signature mismatch', { expected: expectedSignature, received: signature })
       return NextResponse.json({ error: 'Invalid signature' }, { status: 400 })
     }
 
-    // If verification succeeded but it returned undefined/null (some SDKs just return boolean),
-    // we manually parse the body.
-    if (!event || typeof event === 'boolean') {
-      event = JSON.parse(rawBody)
-    }
+    const event = JSON.parse(rawBody)
 
     console.log('Safepay webhook received:', event.type)
 

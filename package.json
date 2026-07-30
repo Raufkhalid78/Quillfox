@@ -29,7 +29,7 @@
     "@supabase-labs/y-supabase": "^0.1.0",
     "@supabase/supabase-js": "^2.108.2",
     "@tiptap/extension-collaboration": "^3.29.2",
-    "@tiptap/extension-collaboration-cursor": "^2.26.2",
+    "@tiptap/extension-collaboration-cursor": "^3.0.0",
     "@tiptap/extension-placeholder": "^3.29.2",
     "@tiptap/react": "^3.29.2",
     "@tiptap/starter-kit": "^3.29.2",
