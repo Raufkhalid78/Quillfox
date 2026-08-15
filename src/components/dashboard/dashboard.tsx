@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAppStore, type WorkspaceData } from '@/stores/app-store'
 import { decryptNoteContentWithStatus, decryptNoteTitleWithStatus, decryptTodoTitleWithStatus, encryptNoteTitle, encryptTodoTitle, decryptWorkspaceTitle, decryptWorkspaceDescription } from '@/lib/encrypted-api'
+import { rotateWorkspaceEncryptionKey } from '@/lib/workspace-rotation'
 import { supabase } from '@/lib/supabase'
 import { logActivity } from '@/lib/activity'
 import { Button } from '@/components/ui/button'
@@ -535,24 +536,31 @@ export function Dashboard() {
 
   const handleRemoveMember = async (memberId: string) => {
     if (!selectedWs) return
-    try {
-      const { error } = await supabase
-        .from('workspace_members')
-        .delete()
-        .eq('id', memberId)
-      
-      if (error) throw error
+    
+    toast.promise(
+      (async () => {
+        const { error } = await supabase
+          .from('workspace_members')
+          .delete()
+          .eq('id', memberId)
+        
+        if (error) throw error
+        
+        await rotateWorkspaceEncryptionKey(selectedWs.id)
 
-      setWsMembers(wsMembers.filter((m) => m.id !== memberId))
-      setWorkspacesAction(workspaces.map((w) => 
-        w.id === selectedWs.id 
-          ? { ...w, _count: { ...w._count, members: Math.max(1, w._count.members - 1) } }
-          : w
-      ))
-      toast.success('Member removed')
-    } catch { 
-      toast.error('Failed to remove member') 
-    }
+        setWsMembers(wsMembers.filter((m) => m.id !== memberId))
+        setWorkspacesAction(workspaces.map((w) => 
+          w.id === selectedWs.id 
+            ? { ...w, _count: { ...w._count, members: Math.max(1, w._count.members - 1) } }
+            : w
+        ))
+      })(),
+      {
+        loading: 'Removing member and re-keying workspace...',
+        success: 'Member removed and workspace re-keyed',
+        error: 'Failed to remove member or re-key workspace'
+      }
+    )
   }
 
   const handleDeleteWorkspace = async () => {

@@ -6,6 +6,7 @@ import { useAppStore, type WorkspaceData } from '@/stores/app-store'
 import { encryptWorkspaceTitle, decryptWorkspaceTitle, encryptWorkspaceDescription, decryptWorkspaceDescription, encryptNoteTitle, encryptTodoTitle } from '@/lib/encrypted-api'
 import { supabase } from '@/lib/supabase'
 import { logActivity } from '@/lib/activity'
+import { rotateWorkspaceEncryptionKey } from '@/lib/workspace-rotation'
 import { AppSidebar } from '@/components/shared/app-sidebar'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -74,6 +75,7 @@ export function WorkspaceDetailView() {
   const [editColor, setEditColor] = useState(selectedWs?.color || '')
   const [isSaving, setIsSaving] = useState(false)
   const [memberToRemove, setMemberToRemove] = useState<{ id: string, name: string } | null>(null)
+  const [isRemovingMember, setIsRemovingMember] = useState(false)
 
   useEffect(() => {
     if (!currentUser) {
@@ -229,6 +231,7 @@ export function WorkspaceDetailView() {
 
   const handleRemoveMember = async () => {
     if (!selectedWs || !memberToRemove) return
+    setIsRemovingMember(true)
     try {
       const { error } = await supabase
         .from('workspace_members')
@@ -240,16 +243,22 @@ export function WorkspaceDetailView() {
         return
       }
 
+      // Automatically re-key the workspace for all remaining members
+      // and re-encrypt all workspace data
+      toast.info('Re-keying workspace for security...')
+      await rotateWorkspaceEncryptionKey(selectedWs.id)
+
       setWsMembers(wsMembers.filter((m) => m.id !== memberToRemove.id))
       setWorkspacesAction(workspaces.map((w) => 
         w.id === selectedWs.id 
           ? { ...w, _count: { ...w._count, members: Math.max(1, w._count.members - 1) } }
           : w
       ))
-      toast.success('Member removed')
-    } catch {
-      toast.error('Failed to remove member')
+      toast.success('Member removed and workspace re-keyed')
+    } catch (err: any) {
+      toast.error('Failed to rotate keys: ' + (err.message || 'Unknown error'))
     } finally {
+      setIsRemovingMember(false)
       setMemberToRemove(null)
     }
   }
@@ -635,8 +644,9 @@ export function WorkspaceDetailView() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleRemoveMember} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+            <AlertDialogCancel disabled={isRemovingMember}>Cancel</AlertDialogCancel>
+            <AlertDialogAction disabled={isRemovingMember} onClick={handleRemoveMember} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              {isRemovingMember ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
               Remove
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -645,4 +655,3 @@ export function WorkspaceDetailView() {
     </div>
   )
 }
-

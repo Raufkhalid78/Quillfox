@@ -26,6 +26,8 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { toast } from 'sonner'
 import { Settings, ShieldCheck, Loader2, LogOut, Sun, Moon, Trash2, Mail, User, Calendar, KeyRound, CheckCircle2, Crown, Lock, ShieldAlert, Camera, Eye, EyeOff, CreditCard } from 'lucide-react'
+import { DataExport } from './data-export'
+import { SessionManagement } from './session-management'
 import { useTheme } from 'next-themes'
 import { format } from 'date-fns'
 import { Switch } from '@/components/ui/switch'
@@ -1006,9 +1008,17 @@ export function SettingsView() {
                       </div>
                     </CardContent>
                   </Card>
-                </motion.div>
+                  </motion.div>
 
-              {/* Danger Zone Section */}
+                  <motion.div variants={fadeUp}>
+                    <SessionManagement />
+                  </motion.div>
+
+                  <motion.div variants={fadeUp}>
+                    <DataExport />
+                  </motion.div>
+
+                {/* Danger Zone Section */}
               <motion.div variants={fadeUp}>
                 <Card className="rounded-xl border-destructive/30 overflow-hidden">
                   <CardHeader className="pb-4">
