@@ -75,6 +75,8 @@ export function SettingsView() {
   const userTier = useAppStore((s) => s.userTier)
   const setTier = useAppStore((s) => s.setTier)
   const vaultAutoLock = useAppStore((s) => s.vaultAutoLock)
+  const migratedLegacyNoteCount = useAppStore((s) => s.migratedLegacyNoteCount)
+  const hidePreviews = useAppStore((s) => s.hidePreviews)
   const vaultLockTimeout = useAppStore((s) => s.vaultLockTimeout)
   const vaultPasscodeHash = useAppStore((s) => s.vaultPasscodeHash)
   const updateVaultSettings = useAppStore((s) => s.updateVaultSettings)
@@ -533,6 +535,17 @@ export function SettingsView() {
           <div className="max-w-4xl mx-auto px-4 md:px-8 py-6 md:py-8">
             <motion.div initial="hidden" animate="visible" variants={stagger} className="space-y-6">
 
+              {migratedLegacyNoteCount > 0 && (
+                <motion.div variants={fadeUp}>
+                  <div className="rounded-xl border border-[#059669]/20 bg-[#059669]/10 p-4 text-sm text-[#059669] flex items-center gap-3">
+                    <ShieldCheck className="w-5 h-5 shrink-0" />
+                    <p>
+                      <strong>Security Upgrade Complete:</strong> {migratedLegacyNoteCount} legacy note{migratedLegacyNoteCount !== 1 && 's'} were successfully re-secured with modern encryption standards during this session.
+                    </p>
+                  </div>
+                </motion.div>
+              )}
+
               {/* Profile Section */}
               <motion.div variants={fadeUp}>
                 <Card className="rounded-xl border-border/50 overflow-hidden">
@@ -794,12 +807,12 @@ export function SettingsView() {
                     {/* Auto-Lock Timeout Selector */}
                     {vaultAutoLock && (
                       <div className="flex items-center justify-between gap-4 py-1 border-t border-border/20 pt-4">
-                        <div>
-                          <p className="text-sm font-medium">Inactivity Timeout</p>
-                          <p className="text-xs text-muted-foreground mt-0.5">
-                            Number of idle minutes before locking the vault.
-                          </p>
-                        </div>
+                          <div>
+                            <p className="text-sm font-medium">Inactivity Timeout</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              Auto-lock resets whenever you move the mouse, type, or tap. The timer is specific to this device, and continues counting down even if the app is in the background.
+                            </p>
+                          </div>
                         <Select
                           value={String(vaultLockTimeout)}
                           onValueChange={handleTimeoutChange}
@@ -960,8 +973,40 @@ export function SettingsView() {
                       Update Password
                     </Button>
                   </CardContent>
-                </Card>
-              </motion.div>
+                  </Card>
+                </motion.div>
+
+                {/* Privacy Settings Section */}
+                <motion.div variants={fadeUp}>
+                  <Card className="rounded-xl border-border/50 overflow-hidden">
+                    <CardHeader className="pb-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#059669] to-[#0d9488] flex items-center justify-center shrink-0">
+                          <EyeOff className="w-5 h-5 text-white" />
+                        </div>
+                        <div>
+                          <CardTitle className="text-base">Privacy Settings</CardTitle>
+                          <CardDescription>Manage how your data is displayed on screen</CardDescription>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <Separator className="opacity-50" />
+                    <CardContent className="pt-5 space-y-5">
+                      <div className="flex items-center justify-between gap-4 py-1">
+                        <div>
+                          <p className="text-sm font-medium">Privacy View</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            Hide note and task previews in lists and dashboard (useful for screen sharing).
+                          </p>
+                        </div>
+                        <Switch
+                          checked={hidePreviews}
+                          onCheckedChange={(checked) => useAppStore.getState().setHidePreviews(checked)}
+                        />
+                      </div>
+                    </CardContent>
+                  </Card>
+                </motion.div>
 
               {/* Danger Zone Section */}
               <motion.div variants={fadeUp}>

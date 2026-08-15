@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAppStore, type WorkspaceData } from '@/stores/app-store'
-import { decryptNoteContent, decryptNoteTitle, decryptTodoTitle, encryptNoteTitle, encryptTodoTitle, decryptWorkspaceTitle, decryptWorkspaceDescription } from '@/lib/encrypted-api'
+import { decryptNoteContentWithStatus, decryptNoteTitleWithStatus, decryptTodoTitleWithStatus, encryptNoteTitle, encryptTodoTitle, decryptWorkspaceTitle, decryptWorkspaceDescription } from '@/lib/encrypted-api'
 import { supabase } from '@/lib/supabase'
 import { logActivity } from '@/lib/activity'
 import { Button } from '@/components/ui/button'
@@ -275,8 +275,15 @@ export function Dashboard() {
         notes.map(async (n) => {
           const existing = noteMap.get(n.id)
           if (existing && existing.updatedAt === n.updatedAt) return
-          const title = await decryptNoteTitle(n.title, n.workspaceId)
-          const decryptedContent = await decryptNoteContent(n.content, n.workspaceId)
+          const { content: title, usedLegacyFallback: titleLegacy } = await decryptNoteTitleWithStatus(n.title, n.workspaceId)
+          const { content: decryptedContent, usedLegacyFallback: contentLegacy } = await decryptNoteContentWithStatus(n.content, n.workspaceId)
+          
+          if (titleLegacy || contentLegacy) {
+            useAppStore.getState().updateNoteContent(n.id, decryptedContent)
+            useAppStore.getState().updateNoteTitle(n.id, title)
+            useAppStore.getState().incrementMigratedCount()
+          }
+          
           const preview = decryptedContent.substring(0, 120)
           noteMap.set(n.id, { title, preview: preview || 'Empty note...', updatedAt: n.updatedAt })
           notesChanged = true
@@ -286,7 +293,12 @@ export function Dashboard() {
         todoLists.map(async (t) => {
           const existing = todoMap.get(t.id)
           if (existing && existing.updatedAt === t.updatedAt) return
-          const title = await decryptTodoTitle(t.title, t.workspaceId)
+          const { content: title, usedLegacyFallback } = await decryptTodoTitleWithStatus(t.title, t.workspaceId)
+          
+          if (usedLegacyFallback) {
+            useAppStore.getState().updateTodoListTitle(t.id, title)
+          }
+          
           todoMap.set(t.id, { title, updatedAt: t.updatedAt })
           todosChanged = true
         })

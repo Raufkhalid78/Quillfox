@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import { useAppStore, TodoItemData } from '@/stores/app-store'
-import { encryptTodoTitle, decryptTodoTitle } from '@/lib/encrypted-api'
+import { encryptTodoTitle, decryptTodoTitleWithStatus } from '@/lib/encrypted-api'
 import { supabase } from '@/lib/supabase'
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationPrevious, PaginationNext, PaginationEllipsis } from '@/components/ui/pagination'
 import { AppSidebar } from '@/components/shared/app-sidebar'
@@ -109,7 +109,10 @@ export function TodosList() {
       const todoMap = new Map<string, string>()
       await Promise.all(
         todoLists.map(async (t) => {
-          const title = await decryptTodoTitle(t.title, t.workspaceId)
+          const { content: title, usedLegacyFallback } = await decryptTodoTitleWithStatus(t.title, t.workspaceId)
+          if (usedLegacyFallback) {
+            useAppStore.getState().updateTodoListTitle(t.id, title)
+          }
           todoMap.set(t.id, title)
         })
       )

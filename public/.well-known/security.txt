@@ -1,4 +1,5 @@
-Contact: security@quillfox.cc
+Contact: mailto:security@quillfox.cc
 Expires: 2027-12-31T23:59:59.000Z
 Preferred-Languages: en
 Canonical: https://www.quillfox.cc/.well-known/security.txt
+Policy: https://www.quillfox.cc/security

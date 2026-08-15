@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import { useAppStore } from '@/stores/app-store'
-import { encryptNoteTitle, decryptNoteTitle, decryptNoteContent } from '@/lib/encrypted-api'
+import { encryptNoteTitle, decryptNoteTitleWithStatus, decryptNoteContentWithStatus } from '@/lib/encrypted-api'
 import { supabase } from '@/lib/supabase'
 import { logActivity } from '@/lib/activity'
 import { Virtuoso } from 'react-virtuoso'
@@ -40,6 +40,7 @@ export function NotesList() {
   const isEncryptedSession = useAppStore((s) => s.isEncryptedSession)
   const userTier = useAppStore((s) => s.userTier)
   const logout = useAppStore((s) => s.logout)
+  const hidePreviews = useAppStore((s) => s.hidePreviews)
   
   const router = useRouter()
 
@@ -118,8 +119,15 @@ export function NotesList() {
         
         await Promise.all(
           chunk.map(async (n) => {
-            const title = await decryptNoteTitle(n.title, n.workspaceId)
-            const decryptedContent = await decryptNoteContent(n.content, n.workspaceId)
+            const { content: title, usedLegacyFallback: titleLegacy } = await decryptNoteTitleWithStatus(n.title, n.workspaceId)
+            const { content: decryptedContent, usedLegacyFallback: contentLegacy } = await decryptNoteContentWithStatus(n.content, n.workspaceId)
+            
+            if (titleLegacy || contentLegacy) {
+              useAppStore.getState().updateNoteContent(n.id, decryptedContent)
+              useAppStore.getState().updateNoteTitle(n.id, title)
+              useAppStore.getState().incrementMigratedCount()
+            }
+            
             const preview = decryptedContent.substring(0, 120)
             noteMap.set(n.id, { title, preview: preview || 'Empty note...', updatedAt: n.updatedAt })
             changed = true
@@ -331,7 +339,7 @@ export function NotesList() {
                                 {isEncryptedSession && <ShieldCheck className="w-3 h-3 text-[#059669]/50 shrink-0" />}
                                 {note.isPinned && <span className="text-[10px] text-muted-foreground">📌</span>}
                               </div>
-                              <p className="text-xs text-muted-foreground line-clamp-2">{decrypted?.preview || 'Empty note...'}</p>
+                              <p className="text-xs text-muted-foreground line-clamp-2">{hidePreviews ? '••••••••' : (decrypted?.preview || 'Empty note...')}</p>
                               <div className="flex items-center gap-2 mt-2">
                                 {ws && (
                                   <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground bg-muted/60 px-1.5 py-0.5 rounded-md">

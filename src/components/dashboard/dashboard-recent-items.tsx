@@ -2,6 +2,7 @@ import React from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { useAppStore } from '@/stores/app-store'
 import { FileText, StickyNote, ListTodo, CheckSquare, ChevronRight, Clock, ShieldCheck, CalendarDays } from 'lucide-react'
 import { formatDistanceToNow, format } from 'date-fns'
 import { getDueDateColor } from '@/lib/utils'
@@ -32,6 +33,7 @@ export function DashboardRecentItems({
   isEncryptedSession
 }: DashboardRecentItemsProps) {
   const router = useRouter()
+  const hidePreviews = useAppStore((s) => s.hidePreviews)
 
   return (
     <motion.div variants={fadeUp}>
@@ -80,7 +82,7 @@ export function DashboardRecentItems({
                               <p className="text-sm font-medium line-clamp-1">{decrypted?.title || note.title}</p>
                               {isEncryptedSession && <ShieldCheck className="w-3 h-3 text-[#059669]/50 shrink-0" />}
                             </div>
-                            <p className="text-xs text-muted-foreground line-clamp-1">{decrypted?.preview || 'Empty note...'}</p>
+                            <p className="text-xs text-muted-foreground line-clamp-1">{hidePreviews ? '••••••••' : (decrypted?.preview || 'Empty note...')}</p>
                             <div className="flex items-center gap-2 mt-1">
                               {note.dueDate && (
                                 <div className={`flex items-center gap-1 shrink-0 ${getDueDateColor(note.dueDate)}`}>

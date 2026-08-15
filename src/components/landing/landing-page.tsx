@@ -359,32 +359,32 @@ export function LandingPage() {
           
           <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-6">
             <TiltCard className="bg-black/60">
-              <p className="text-white/80 italic mb-6">"QuillFox completely changed how our remote team collaborates. The zero-knowledge architecture means we can finally share sensitive client notes without legal worry."</p>
+              <p className="text-white/80 italic mb-6">"As a journalist covering sensitive topics, I can't rely on standard cloud providers. QuillFox's local-first zero-knowledge approach ensures that even under a subpoena, nobody can read my drafts."</p>
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-emerald-500 to-teal-500" />
                 <div>
-                  <h4 className="font-bold text-sm">Sarah Jenkins</h4>
-                  <p className="text-xs text-white/40">CTO, SecurTech</p>
+                  <h4 className="font-bold text-sm">Elena Rostova</h4>
+                  <p className="text-xs text-white/40">Investigative Reporter</p>
                 </div>
               </div>
             </TiltCard>
             <TiltCard className="bg-black/60">
-              <p className="text-white/80 italic mb-6">"I've tried Notion, Obsidian, and Evernote. QuillFox is the only one that perfectly balances a beautiful UI with uncompromising privacy. The Vault lock feature is genius."</p>
+              <p className="text-white/80 italic mb-6">"Our law firm handles thousands of confidential M&A documents. Switching to QuillFox gave us peace of mind; the E2EE workspaces perfectly meet our strict data privacy compliance standards."</p>
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-violet-500 to-fuchsia-500" />
                 <div>
-                  <h4 className="font-bold text-sm">Marcus Chen</h4>
-                  <p className="text-xs text-white/40">Freelance Developer</p>
+                  <h4 className="font-bold text-sm">David Sterling, Esq.</h4>
+                  <p className="text-xs text-white/40">Partner, Sterling Legal</p>
                 </div>
               </div>
             </TiltCard>
             <TiltCard className="bg-black/60">
-              <p className="text-white/80 italic mb-6">"The speed of this app is unreal. Everything syncs instantly across my devices, and the UI is just gorgeous. It feels like software from the future."</p>
+              <p className="text-white/80 italic mb-6">"I audited the client-side encryption code myself before moving my personal journal here. The PBKDF2 key derivation and AES-GCM implementation is textbook perfect. Truly zero-knowledge."</p>
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-blue-500 to-cyan-500" />
+                <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-amber-500 to-orange-500" />
                 <div>
-                  <h4 className="font-bold text-sm">Elena Rodriguez</h4>
-                  <p className="text-xs text-white/40">Product Designer</p>
+                  <h4 className="font-bold text-sm">Alex Chen</h4>
+                  <p className="text-xs text-white/40">Security Researcher</p>
                 </div>
               </div>
             </TiltCard>

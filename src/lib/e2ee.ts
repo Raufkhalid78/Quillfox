@@ -80,31 +80,26 @@ export async function encrypt(
 }
 
 // Decrypt base64 encoded string → returns plaintext
-export async function decrypt(
+export async function decryptWithStatus(
   encoded: string,
   key: CryptoKey
-): Promise<string> {
-  if (!encoded) return encoded
+): Promise<{ content: string; usedLegacyFallback: boolean }> {
+  if (!encoded) return { content: encoded, usedLegacyFallback: false }
   const b64 = encoded.startsWith('enc:') ? encoded.slice(4) : encoded
   const binary = atob(b64)
   const combined = new Uint8Array(binary.length)
   
-  // Chunked conversion to avoid stack overflow on large data
   const chunkSize = 0x8000
   for (let i = 0; i < binary.length; i += chunkSize) {
     const chunk = binary.substring(i, i + chunkSize)
     for (let j = 0; j < chunk.length; j++) {
       combined[i + j] = chunk.charCodeAt(j)
     }
-    // Yield to the event loop every 4 chunks (approx 128KB) to prevent UI freezing
     if (i > 0 && i % (chunkSize * 4) === 0) {
       await new Promise(resolve => setTimeout(resolve, 0))
     }
   }
   
-  // If the string starts with enc:, it uses the new (IV+Ciphertext) format.
-  // Legacy strings (before the 'enc:' prefix was added) might have Salt+IV+Ciphertext.
-  // For safety, we only support the new format for now, assuming Phase 1 is a clean slate or data wipe.
   const iv = combined.slice(0, IV_LENGTH)
   const ciphertext = combined.slice(IV_LENGTH)
   
@@ -114,9 +109,9 @@ export async function decrypt(
       key,
       ciphertext
     )
-    return new TextDecoder().decode(decrypted)
+    return { content: new TextDecoder().decode(decrypted), usedLegacyFallback: false }
   } catch (error) {
-    // FALLBACK for legacy corrupted notes (encrypted with empty IV on mobile)
+    // FALLBACK for legacy corrupted notes
     try {
       const rawKey = await crypto.subtle.exportKey('raw', key)
       const rawKeyBytes = new Uint8Array(rawKey)
@@ -131,14 +126,22 @@ export async function decrypt(
       decipher.update(forge.util.createBuffer(fbCiphertextStr))
       
       if (decipher.finish()) {
-        return forge.util.decodeUtf8(decipher.output.getBytes())
+        return { content: forge.util.decodeUtf8(decipher.output.getBytes()), usedLegacyFallback: true }
       }
     } catch (fbErr) {
-      // Ignore and throw original error
+      // Ignore
     }
     
     throw new Error('Decryption failed')
   }
+}
+
+export async function decrypt(
+  encoded: string,
+  key: CryptoKey
+): Promise<string> {
+  const result = await decryptWithStatus(encoded, key)
+  return result.content
 }
 
 // Check if a string looks like encrypted data (base64 format)

@@ -115,10 +115,14 @@ interface AppState {
   vaultLockTimeout: number // in milliseconds
   vaultPasscodeHash: string | null
   extraCollaborators: number
+  hidePreviews: boolean
   
   globalSyncTrigger: number
+  migratedLegacyNoteCount: number
 
   // Actions
+  setHidePreviews: (hide: boolean) => void
+  incrementMigratedCount: () => void
   login: (user: User) => void
   logout: () => void
   setEncryptionKey: (key: CryptoKey, salt: Uint8Array) => void
@@ -181,9 +185,13 @@ export const useAppStore = create<AppState>()(
       vaultLockTimeout: 5 * 60 * 1000,
       vaultPasscodeHash: null,
       extraCollaborators: 0,
+      hidePreviews: false,
       globalSyncTrigger: 0,
+      migratedLegacyNoteCount: 0,
 
       // Actions
+      setHidePreviews: (hide: boolean) => set({ hidePreviews: hide }),
+      incrementMigratedCount: () => set((state) => ({ migratedLegacyNoteCount: state.migratedLegacyNoteCount + 1 })),
       login: (user) =>
         set({ currentUser: user }),
 
