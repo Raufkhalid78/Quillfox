@@ -72,7 +72,7 @@ export function TodoList() {
 
         const { data: listData, error: listError } = await supabase
           .from('todo_lists')
-          .select('*, todo_items(*), locker:profiles!todo_lists_locked_by_fkey(id, name, email)')
+          .select('*, todo_items(*)')
           .eq('id', selectedTodoListId)
           .single()
 
@@ -83,9 +83,15 @@ export function TodoList() {
           return
         }
 
-        if (!lockAcquired && listData.locked_by !== currentUser.id) {
+        if (!lockAcquired && listData.locked_by && listData.locked_by !== currentUser.id) {
           setIsLockedByOther(true)
-          setLockedByInfo(Array.isArray(listData.locker) ? listData.locker[0] : listData.locker)
+          // Fetch locker profile separately to avoid FK hint issues
+          const { data: lockerData } = await supabase
+            .from('profiles')
+            .select('id, name, email')
+            .eq('id', listData.locked_by)
+            .single()
+          if (lockerData) setLockedByInfo(lockerData)
         }
 
         const decryptedTitle = await decryptTodoTitle(listData.title, listData.workspace_id)

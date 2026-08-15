@@ -72,7 +72,7 @@ export function NoteEditor() {
 
         const { data, error } = await supabase
           .from('notes')
-          .select('*, locker:profiles!notes_locked_by_fkey(id, name, email)')
+          .select('*')
           .eq('id', selectedNoteId)
           .single()
 
@@ -82,9 +82,15 @@ export function NoteEditor() {
           return
         }
 
-        if (!lockAcquired && data.locked_by !== currentUser.id) {
+        if (!lockAcquired && data.locked_by && data.locked_by !== currentUser.id) {
           setIsLockedByOther(true)
-          setLockedByInfo(Array.isArray(data.locker) ? data.locker[0] : data.locker)
+          // Fetch locker profile separately to avoid FK hint issues
+          const { data: lockerData } = await supabase
+            .from('profiles')
+            .select('id, name, email')
+            .eq('id', data.locked_by)
+            .single()
+          if (lockerData) setLockedByInfo(lockerData)
         }
 
         const decryptedTitle = await decryptNoteTitle(data.title, data.workspace_id)
