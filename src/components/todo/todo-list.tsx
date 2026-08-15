@@ -363,7 +363,7 @@ export function TodoList() {
       setTitle(newTitle)
       if (!isTyping.current && selectedTodoListId) {
         isTyping.current = true
-        supabase.channel(`room:todo-${selectedTodoListId}`).track({ userId: currentUser?.id, isTyping: true })
+        supabase.channel(`room:todo-${selectedTodoListId}`).track({ userId: currentUser?.id, userName: currentUser?.name || currentUser?.email?.split('@')[0] || 'Anonymous', name: currentUser?.name || currentUser?.email?.split('@')[0] || 'Anonymous', avatar: currentUser?.image || null, isTyping: true })
       }
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
       saveTimeoutRef.current = setTimeout(async () => {
@@ -385,7 +385,7 @@ export function TodoList() {
         }
         if (isTyping.current && selectedTodoListId) {
           isTyping.current = false
-          supabase.channel(`room:todo-${selectedTodoListId}`).track({ userId: currentUser?.id, isTyping: false })
+          supabase.channel(`room:todo-${selectedTodoListId}`).track({ userId: currentUser?.id, userName: currentUser?.name || currentUser?.email?.split('@')[0] || 'Anonymous', name: currentUser?.name || currentUser?.email?.split('@')[0] || 'Anonymous', avatar: currentUser?.image || null, isTyping: false })
         }
       }, 1500)
     },
@@ -496,7 +496,7 @@ export function TodoList() {
               onClick={() => {
                 if (isTyping.current && selectedTodoListId) {
                   isTyping.current = false
-                  supabase.channel(`room:todo-${selectedTodoListId}`).track({ userId: currentUser?.id, isTyping: false })
+                  supabase.channel(`room:todo-${selectedTodoListId}`).track({ userId: currentUser?.id, userName: currentUser?.name || currentUser?.email?.split('@')[0] || 'Anonymous', name: currentUser?.name || currentUser?.email?.split('@')[0] || 'Anonymous', avatar: currentUser?.image || null, isTyping: false })
                 }
                 router.push('/dashboard/todos')
               }}
@@ -561,7 +561,7 @@ export function TodoList() {
                   setTodoFolder(todoList.id, folderId)
                   if (!isTyping.current) {
                     isTyping.current = true
-                    supabase.channel(`room:todo-${todoList.id}`).track({ userId: currentUser?.id, isTyping: true })
+                    supabase.channel(`room:todo-${todoList.id}`).track({ userId: currentUser?.id, userName: currentUser?.name || currentUser?.email?.split('@')[0] || 'Anonymous', name: currentUser?.name || currentUser?.email?.split('@')[0] || 'Anonymous', avatar: currentUser?.image || null, isTyping: true })
                   }
                   if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
                   saveTimeoutRef.current = setTimeout(async () => {
@@ -584,7 +584,7 @@ export function TodoList() {
                     }
                     if (isTyping.current && selectedTodoListId) {
                       isTyping.current = false
-                      supabase.channel(`room:todo-${selectedTodoListId}`).track({ userId: currentUser?.id, isTyping: false })
+                      supabase.channel(`room:todo-${selectedTodoListId}`).track({ userId: currentUser?.id, userName: currentUser?.name || currentUser?.email?.split('@')[0] || 'Anonymous', name: currentUser?.name || currentUser?.email?.split('@')[0] || 'Anonymous', avatar: currentUser?.image || null, isTyping: false })
                     }
                   }, 1500)
                 }}
@@ -797,23 +797,23 @@ export function TodoList() {
                       setNewItemText(e.target.value)
                       if (!isTyping.current && selectedTodoListId) {
                         isTyping.current = true
-                        supabase.channel(`room:todo-${selectedTodoListId}`).track({ userId: currentUser?.id, isTyping: true })
+                        supabase.channel(`room:todo-${selectedTodoListId}`).track({ userId: currentUser?.id, userName: currentUser?.name || currentUser?.email?.split('@')[0] || 'Anonymous', name: currentUser?.name || currentUser?.email?.split('@')[0] || 'Anonymous', avatar: currentUser?.image || null, isTyping: true })
                       }
                     }}
                     onBlur={() => {
                       if (isTyping.current && selectedTodoListId) {
                         isTyping.current = false
-                        supabase.channel(`room:todo-${selectedTodoListId}`).track({ userId: currentUser?.id, isTyping: false })
+                        supabase.channel(`room:todo-${selectedTodoListId}`).track({ userId: currentUser?.id, userName: currentUser?.name || currentUser?.email?.split('@')[0] || 'Anonymous', name: currentUser?.name || currentUser?.email?.split('@')[0] || 'Anonymous', avatar: currentUser?.image || null, isTyping: false })
                       }
                     }}
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !isLockedByOther) {
-                        handleAddItem()
-                        if (isTyping.current && selectedTodoListId) {
-                          isTyping.current = false
-                          supabase.channel(`room:todo-${selectedTodoListId}`).track({ userId: currentUser?.id, isTyping: false })
+                        if (e.key === 'Enter' && !isLockedByOther) {
+                          handleAddItem()
+                          if (isTyping.current && selectedTodoListId) {
+                            isTyping.current = false
+                            supabase.channel(`room:todo-${selectedTodoListId}`).track({ userId: currentUser?.id, userName: currentUser?.name || currentUser?.email?.split('@')[0] || 'Anonymous', name: currentUser?.name || currentUser?.email?.split('@')[0] || 'Anonymous', avatar: currentUser?.image || null, isTyping: false })
+                          }
                         }
-                      }
                     }}
                     className="flex-1 bg-transparent border-0 focus-visible:ring-0 text-sm"
               />

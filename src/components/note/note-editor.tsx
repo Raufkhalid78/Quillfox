@@ -505,7 +505,7 @@ export function NoteEditor() {
                       setContent(val)
                       if (!isTyping.current && note?.id) {
                         isTyping.current = true
-                        supabase.channel(`room:note-${note.id}`).track({ userId: currentUser?.id, isTyping: true })
+                        supabase.channel(`room:note-${note.id}`).track({ userId: currentUser?.id, userName: currentUser?.name || currentUser?.email?.split('@')[0] || 'Anonymous', name: currentUser?.name || currentUser?.email?.split('@')[0] || 'Anonymous', avatar: currentUser?.image || null, isTyping: true })
                       }
                       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
                       saveTimeoutRef.current = setTimeout(() => {
@@ -513,7 +513,7 @@ export function NoteEditor() {
                         saveContent()
                         if (isTyping.current && note?.id) {
                           isTyping.current = false
-                          supabase.channel(`room:note-${note.id}`).track({ userId: currentUser?.id, isTyping: false })
+                          supabase.channel(`room:note-${note.id}`).track({ userId: currentUser?.id, userName: currentUser?.name || currentUser?.email?.split('@')[0] || 'Anonymous', name: currentUser?.name || currentUser?.email?.split('@')[0] || 'Anonymous', avatar: currentUser?.image || null, isTyping: false })
                         }
                       }, 1500)
                     }}

@@ -83,8 +83,7 @@ export async function rotateWorkspaceEncryptionKey(workspaceId: string) {
         author_id: todo.authorId,
         is_pinned: todo.isPinned,
         is_archived: todo.isArchived,
-        folder_id: todo.folderId,
-        locked_by: todo.lockedBy
+        folder_id: todo.folderId
       })
 
       for (const item of todo.items) {
@@ -95,7 +94,7 @@ export async function rotateWorkspaceEncryptionKey(workspaceId: string) {
           id: item.id,
           todo_list_id: todo.id,
           title: newEncItemText,
-          is_completed: item.isCompleted,
+          is_completed: item.completed,
           order: item.order,
           updated_at: new Date().toISOString()
         })
