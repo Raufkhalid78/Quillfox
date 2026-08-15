@@ -77,7 +77,8 @@ export function TodoList() {
           .single()
 
         if (listError || !listData) {
-          toast.error('Failed to load todo list')
+          console.error("Todo list load error:", listError)
+          toast.error('Failed to load todo list: ' + (listError?.message || 'Not found'))
           router.push('/dashboard/todos')
           return
         }

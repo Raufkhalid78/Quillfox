@@ -57,7 +57,14 @@ export async function rotateWorkspaceEncryptionKey(workspaceId: string) {
         id: note.id,
         title: newEncTitle,
         content: newEncContent,
-        updated_at: new Date().toISOString()
+        updated_at: new Date().toISOString(),
+        workspace_id: note.workspaceId,
+        author_id: note.authorId,
+        is_pinned: note.isPinned,
+        is_archived: note.isArchived,
+        folder_id: note.folderId,
+        tags: note.tags,
+        locked_by: note.lockedBy
       })
     }
 
@@ -71,7 +78,13 @@ export async function rotateWorkspaceEncryptionKey(workspaceId: string) {
       updatedTodos.push({
         id: todo.id,
         title: newEncTitle,
-        updated_at: new Date().toISOString()
+        updated_at: new Date().toISOString(),
+        workspace_id: todo.workspaceId,
+        author_id: todo.authorId,
+        is_pinned: todo.isPinned,
+        is_archived: todo.isArchived,
+        folder_id: todo.folderId,
+        locked_by: todo.lockedBy
       })
 
       for (const item of todo.items) {
@@ -80,7 +93,10 @@ export async function rotateWorkspaceEncryptionKey(workspaceId: string) {
         
         updatedTodoItems.push({
           id: item.id,
+          todo_list_id: todo.id,
           title: newEncItemText,
+          is_completed: item.isCompleted,
+          order: item.order,
           updated_at: new Date().toISOString()
         })
       }
