@@ -34,6 +34,7 @@ const getColor = (str: string) => {
 export function NotionEditor({ noteId, currentUser, content, onChange, disabled }: NotionEditorProps) {
   const userTier = useAppStore((s) => s.userTier)
   const [provider, setProvider] = useState<SupabaseProvider | null>(null)
+  const [providerError, setProviderError] = useState<string | null>(null)
   
   // 1. Initialize a Yjs Document. One per note.
   const ydoc = useMemo(() => new Y.Doc(), [noteId])
@@ -42,28 +43,83 @@ export function NotionEditor({ noteId, currentUser, content, onChange, disabled 
   useEffect(() => {
     if (!noteId || !currentUser) return
 
-    const channelName = `yjs-note-${noteId}`
-    const p = new SupabaseProvider(channelName, ydoc, supabase as any)
+    let p: SupabaseProvider | null = null
+    try {
+      const channelName = `yjs-note-${noteId}`
+      p = new SupabaseProvider(channelName, ydoc, supabase as any)
 
-    // Setup awareness (Cursor + Avatar Presence)
-    const userColor = getColor(currentUser.id)
-    // @ts-ignore
-    p.awareness.setLocalStateField('user', {
-      name: currentUser.name || currentUser.email,
-      color: userColor,
-      avatar: currentUser.avatar || null
-    })
+      // Setup awareness (Cursor + Avatar Presence)
+      const userColor = getColor(currentUser.id)
+      // @ts-ignore
+      p.awareness.setLocalStateField('user', {
+        name: currentUser.name || currentUser.email,
+        color: userColor,
+        avatar: currentUser.avatar || null
+      })
 
-    setProvider(p)
+      setProvider(p)
+      setProviderError(null)
+    } catch (err) {
+      console.error('[NotionEditor] Failed to init SupabaseProvider:', err)
+      setProviderError('Failed to connect to live room')
+      // Still show the editor without collaboration
+    }
 
     return () => {
-      p.destroy()
+      try { p?.destroy() } catch {}
     }
   }, [noteId, currentUser, ydoc])
 
-  // Let's refactor the useEditor to only mount when provider is ready to avoid complex dynamic injection.
   return (
     <div className="relative w-full notion-editor-wrapper">
+      {/* Collaboration cursor styles — using standard style tag, not styled-jsx */}
+      <style>{`
+        .collaboration-cursor__caret {
+          position: relative;
+          margin-left: -1px;
+          margin-right: -1px;
+          border-left: 2px solid #000;
+          border-right: 2px solid #000;
+          word-break: normal;
+          pointer-events: none;
+        }
+        .collaboration-cursor__label {
+          position: absolute;
+          top: -1.4em;
+          left: -1px;
+          font-size: 12px;
+          font-style: normal;
+          font-weight: 600;
+          line-height: normal;
+          user-select: none;
+          color: #000;
+          padding: 0.1rem 0.3rem;
+          border-radius: 3px 3px 3px 0;
+          white-space: nowrap;
+          pointer-events: none;
+        }
+        .tiptap-editor p.is-editor-empty:first-child::before {
+          content: attr(data-placeholder);
+          float: left;
+          color: #9ca3af;
+          pointer-events: none;
+          height: 0;
+        }
+        .tiptap-editor h1 { font-size: 1.875rem; font-weight: 700; margin-top: 1.5rem; margin-bottom: 0.5rem; }
+        .tiptap-editor h2 { font-size: 1.5rem; font-weight: 600; margin-top: 1.25rem; margin-bottom: 0.5rem; }
+        .tiptap-editor h3 { font-size: 1.25rem; font-weight: 600; margin-top: 1rem; margin-bottom: 0.5rem; }
+        .tiptap-editor ul { list-style-type: disc; padding-left: 1.5rem; margin-top: 0.5rem; margin-bottom: 0.5rem; }
+        .tiptap-editor ol { list-style-type: decimal; padding-left: 1.5rem; margin-top: 0.5rem; margin-bottom: 0.5rem; }
+        .tiptap-editor blockquote { border-left: 4px solid #d1d5db; padding-left: 1rem; color: #6b7280; font-style: italic; }
+        .dark .tiptap-editor blockquote { border-left-color: #4b5563; color: #9ca3af; }
+        .tiptap-editor pre { background: #1f2937; color: #f9fafb; padding: 1rem; border-radius: 0.5rem; overflow-x: auto; margin-top: 0.5rem; margin-bottom: 0.5rem; }
+        .tiptap-editor code { background: #e5e7eb; color: #111827; padding: 0.125rem 0.25rem; border-radius: 0.25rem; font-size: 0.875em; }
+        .dark .tiptap-editor code { background: #374151; color: #f9fafb; }
+        .tiptap-editor pre code { background: transparent; color: inherit; padding: 0; }
+        .tiptap-editor mark { background-color: #fef08a; padding: 0.125rem 0; border-radius: 0.125rem; }
+        .dark .tiptap-editor mark { background-color: #854d0e; color: #f9fafb; }
+      `}</style>
+
       {/* Free Tier Banner */}
       {userTier === 'free' && (
         <div className="mb-4 p-3 bg-primary/10 border border-primary/20 rounded-xl flex items-center justify-between">
@@ -74,14 +130,24 @@ export function NotionEditor({ noteId, currentUser, content, onChange, disabled 
             <div>
               <h3 className="font-semibold text-sm">Advanced Formatting Locked</h3>
               <p className="text-xs text-muted-foreground">
-                Upgrade to Premium to unlock '/' commands, formatting bubbles, and advanced blocks.
+                Upgrade to Premium to unlock &apos;/&apos; commands, formatting bubbles, and advanced blocks.
               </p>
             </div>
           </div>
         </div>
       )}
 
-      {provider ? (
+      {providerError ? (
+        // Fallback: show editor without collaboration if provider fails
+        <EditorWithProvider
+          ydoc={ydoc}
+          provider={null}
+          content={content}
+          onChange={onChange}
+          disabled={disabled}
+          userTier={userTier}
+        />
+      ) : provider ? (
         <EditorWithProvider
           ydoc={ydoc}
           provider={provider}
@@ -103,29 +169,35 @@ export function NotionEditor({ noteId, currentUser, content, onChange, disabled 
 function EditorWithProvider({ ydoc, provider, content, onChange, disabled, userTier }: any) {
   const initialized = useRef(false)
 
+  const extensions = [
+    StarterKit,
+    Markdown,
+    Placeholder.configure({
+      placeholder: userTier !== 'free'
+        ? "Type '/' for Notion-Style slash commands...\nHighlight text to open the formatting bubble."
+        : 'Start writing...',
+    }),
+    Collaboration.configure({
+      document: ydoc,
+    }),
+    // Only add collaboration cursor if provider is available
+    ...(provider ? [CollaborationCursor.configure({
+      provider: provider,
+      // @ts-ignore
+      user: provider.awareness?.getLocalState()?.user,
+    })] : []),
+  ]
+
   const editor = useEditor({
-    extensions: [
-      StarterKit,
-      Markdown,
-      Placeholder.configure({
-        placeholder: userTier !== 'free'
-          ? "Type '/' for Notion-Style slash commands...\nHighlight text to open the formatting bubble."
-          : "Start writing...",
-      }),
-      Collaboration.configure({
-        document: ydoc,
-      }),
-      CollaborationCursor.configure({
-        provider: provider,
-        // @ts-ignore
-        user: provider.awareness.getLocalState()?.user,
-      }),
-    ],
+    extensions,
     editable: !disabled,
     onUpdate: ({ editor }) => {
-      // Extract markdown
-      const markdown = (editor.storage as any).markdown.getMarkdown()
-      onChange(markdown)
+      try {
+        const markdown = (editor.storage as any).markdown.getMarkdown()
+        onChange(markdown)
+      } catch (e) {
+        console.error('[NotionEditor] onUpdate error:', e)
+      }
     },
     editorProps: {
       attributes: {
@@ -134,14 +206,18 @@ function EditorWithProvider({ ydoc, provider, content, onChange, disabled, userT
     },
   })
 
-  // Set initial content if the Yjs doc is empty and we are the lock holder (or just first to load)
+  // Set initial content if the Yjs doc is empty
   useEffect(() => {
     if (editor && !initialized.current) {
       initialized.current = true
-      // Check if the Ydoc is empty by looking at its content length
-      const ytext = ydoc.getXmlFragment('default')
-      if (ytext.length === 0 && content) {
-        editor.commands.setContent(content)
+      try {
+        const ytext = ydoc.getXmlFragment('default')
+        if (ytext.length === 0 && content) {
+          editor.commands.setContent(content)
+        }
+      } catch (e) {
+        // Fallback: set content directly
+        if (content) editor.commands.setContent(content)
       }
     }
   }, [editor, content, ydoc])
@@ -156,56 +232,6 @@ function EditorWithProvider({ ydoc, provider, content, onChange, disabled, userT
   return (
     <div className={`w-full min-h-[60vh] rounded-xl border border-border/50 bg-card/50 transition-all ${disabled ? 'opacity-50 pointer-events-none' : 'focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary/40'}`}>
       <EditorContent editor={editor} />
-      
-      {/* Collaboration Cursor Styles */}
-      <style jsx global>{`
-        .collaboration-cursor__caret {
-          position: relative;
-          margin-left: -1px;
-          margin-right: -1px;
-          border-left: 2px solid #000;
-          border-right: 2px solid #000;
-          word-break: normal;
-          pointer-events: none;
-        }
-
-        .collaboration-cursor__label {
-          position: absolute;
-          top: -1.4em;
-          left: -1px;
-          font-size: 12px;
-          font-style: normal;
-          font-weight: 600;
-          line-height: normal;
-          user-select: none;
-          color: #000;
-          padding: 0.1rem 0.3rem;
-          border-radius: 3px 3px 3px 0;
-          white-space: nowrap;
-          pointer-events: none;
-        }
-
-        .tiptap-editor p.is-editor-empty:first-child::before {
-          content: attr(data-placeholder);
-          float: left;
-          color: #9ca3af;
-          pointer-events: none;
-          height: 0;
-        }
-        .tiptap-editor h1 { font-size: 1.875rem; font-weight: 700; margin-top: 1.5rem; margin-bottom: 0.5rem; }
-        .tiptap-editor h2 { font-size: 1.5rem; font-weight: 600; margin-top: 1.25rem; margin-bottom: 0.5rem; }
-        .tiptap-editor h3 { font-size: 1.25rem; font-weight: 600; margin-top: 1rem; margin-bottom: 0.5rem; }
-        .tiptap-editor ul { list-style-type: disc; padding-left: 1.5rem; margin-top: 0.5rem; margin-bottom: 0.5rem; }
-        .tiptap-editor ol { list-style-type: decimal; padding-left: 1.5rem; margin-top: 0.5rem; margin-bottom: 0.5rem; }
-        .tiptap-editor blockquote { border-left: 4px solid #d1d5db; padding-left: 1rem; color: #6b7280; font-style: italic; }
-        .dark .tiptap-editor blockquote { border-left-color: #4b5563; color: #9ca3af; }
-        .tiptap-editor pre { background: #1f2937; color: #f9fafb; padding: 1rem; rounded: 0.5rem; overflow-x: auto; margin-top: 0.5rem; margin-bottom: 0.5rem; }
-        .tiptap-editor code { background: #e5e7eb; color: #111827; padding: 0.125rem 0.25rem; rounded: 0.25rem; font-size: 0.875em; }
-        .dark .tiptap-editor code { background: #374151; color: #f9fafb; }
-        .tiptap-editor pre code { background: transparent; color: inherit; padding: 0; }
-        .tiptap-editor mark { background-color: #fef08a; padding: 0.125rem 0; border-radius: 0.125rem; }
-        .dark .tiptap-editor mark { background-color: #854d0e; color: #f9fafb; }
-      `}</style>
     </div>
   )
 }
