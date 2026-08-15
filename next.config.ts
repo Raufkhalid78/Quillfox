@@ -10,10 +10,7 @@ const nextConfig: NextConfig = {
         // Apply these headers to all routes in your application.
         source: '/(.*)',
         headers: [
-          {
-            key: 'Content-Security-Policy',
-            value: "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.supabase.co; connect-src 'self' wss://*.supabase.co https://*.supabase.co https://*.sentry.io; worker-src 'self' blob:; font-src 'self' data:; frame-ancestors 'none';",
-          },
+          // Content-Security-Policy is handled dynamically by src/middleware.ts for nonce generation
           {
             key: 'X-Content-Type-Options',
             value: 'nosniff',

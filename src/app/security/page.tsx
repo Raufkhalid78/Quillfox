@@ -33,17 +33,13 @@ export default function SecurityWhitepaper() {
           <div>
             <h2 className="text-3xl font-bold mb-6 flex items-center gap-3">
               <Key className="w-8 h-8 text-emerald-500" />
-              1. Local Key Generation
+              1. Master Key Derivation
             </h2>
             <p className="text-white/70 text-lg leading-relaxed mb-6">
-              When you create an account, QuillFox uses <code>crypto.subtle.generateKey</code> to create a robust AES-256-GCM symmetric master key directly on your device. This key is never transmitted to our servers in plaintext.
+              Your encryption keys are derived entirely on your device using your passcode. We use <strong>PBKDF2 with 600,000 iterations</strong> and SHA-256 to derive a robust <strong>AES-256-GCM</strong> symmetric master key. This ensures your key is highly resistant to brute-force attacks and authenticated against tampering.
             </p>
             <div className="bg-white/5 border border-white/10 rounded-xl p-6 text-sm text-emerald-400 font-mono">
-              await window.crypto.subtle.generateKey(<br/>
-              &nbsp;&nbsp;&#123; name: "AES-GCM", length: 256 &#125;,<br/>
-              &nbsp;&nbsp;true,<br/>
-              &nbsp;&nbsp;["encrypt", "decrypt"]<br/>
-              );
+              QuickCrypto.pbkdf2Sync(passcode, salt, 600000, 32, 'sha256')
             </div>
           </div>
 

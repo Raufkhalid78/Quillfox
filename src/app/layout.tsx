@@ -19,10 +19,14 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL('https://www.quillfox.cc'),
   title: "QuillFox - Your Encrypted Workspace",
   description: "A comprehensive encrypted productivity workspace combining rich-text notetaking and structured to-do lists with end-to-end encryption.",
   keywords: ["QuillFox", "productivity", "notes", "todo", "encryption", "workspace"],
   authors: [{ name: "QuillFox Team" }],
+  alternates: {
+    canonical: '/',
+  },
   icons: {
     icon: "/icon.svg",
   },
@@ -33,13 +37,17 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+import { headers } from 'next/headers'
+
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const nonce = (await headers()).get('x-nonce') || '';
+
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning nonce={nonce}>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}
       >

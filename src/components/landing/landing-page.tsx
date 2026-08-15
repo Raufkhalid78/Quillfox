@@ -19,8 +19,17 @@ function TiltCard({ children, className }: { children: React.ReactNode, classNam
   const rotateX = useTransform(mouseYSpring, [-0.5, 0.5], ["17.5deg", "-17.5deg"])
   const rotateY = useTransform(mouseXSpring, [-0.5, 0.5], ["-17.5deg", "17.5deg"])
 
+  const [isMobile, setIsMobile] = useState(true)
+
+  useEffect(() => {
+    setIsMobile(window.innerWidth < 768)
+    const handleResize = () => setIsMobile(window.innerWidth < 768)
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
+
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement, MouseEvent>) => {
-    if (!ref.current) return
+    if (!ref.current || isMobile) return
     const rect = ref.current.getBoundingClientRect()
     const width = rect.width
     const height = rect.height
@@ -33,6 +42,7 @@ function TiltCard({ children, className }: { children: React.ReactNode, classNam
   }
 
   const handleMouseLeave = () => {
+    if (isMobile) return
     x.set(0)
     y.set(0)
   }
@@ -43,8 +53,8 @@ function TiltCard({ children, className }: { children: React.ReactNode, classNam
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
       style={{
-        rotateY,
-        rotateX,
+        rotateY: isMobile ? 0 : rotateY,
+        rotateX: isMobile ? 0 : rotateX,
         transformStyle: "preserve-3d",
       }}
       className={`relative rounded-2xl border border-white/10 bg-black/40 backdrop-blur-md p-8 ${className}`}
@@ -474,10 +484,12 @@ export function LandingPage() {
         {/* FOOTER */}
         <footer className="border-t border-white/5 py-12 px-6 flex flex-col md:flex-row items-center justify-between text-white/40 text-sm">
           <p>© {new Date().getFullYear()} QuillFox. A product by <strong>TechyDez</strong>. All rights reserved.</p>
-          <div className="flex gap-4 mt-4 md:mt-0">
+          <div className="flex gap-4 mt-4 md:mt-0 flex-wrap justify-center">
+            <Button variant="link" className="text-white/40 hover:text-white p-0 h-auto" onClick={() => router.push('/security')}>Security Architecture</Button>
             <Button variant="link" className="text-white/40 hover:text-white p-0 h-auto" onClick={() => router.push('/privacy')}>Privacy Policy</Button>
             <Button variant="link" className="text-white/40 hover:text-white p-0 h-auto" onClick={() => router.push('/terms')}>Terms of Service</Button>
             <Button variant="link" className="text-white/40 hover:text-white p-0 h-auto" onClick={() => router.push('/refund')}>Refund Policy</Button>
+            <Button variant="link" className="text-white/40 hover:text-white p-0 h-auto" onClick={() => router.push('/data-use')}>OAuth Data Use</Button>
           </div>
         </footer>
 
