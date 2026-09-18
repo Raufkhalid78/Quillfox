@@ -842,3 +842,43 @@
 .hover-icon-bounce:hover > svg {
   animation: icon-bounce 0.3s ease;
 }
+
+/* ========================================
+   Accessibility
+   ======================================== */
+
+/* Consistent, visible keyboard focus across the app. */
+:focus-visible {
+  outline: 2px solid var(--qf-purple-500);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Skip link for keyboard and screen-reader users. */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 100;
+  padding: 0.75rem 1rem;
+  background: var(--qf-purple-700);
+  color: white;
+  border-radius: 0 0 0.5rem 0;
+  font-weight: 600;
+}
+
+.skip-link:focus {
+  left: 0;
+}
+
+/* Respect the user's motion preference. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

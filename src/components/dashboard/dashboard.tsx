@@ -3,10 +3,12 @@
 import { useEffect, useState, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAppStore, type WorkspaceData } from '@/stores/app-store'
-import { decryptNoteContentWithStatus, decryptNoteTitleWithStatus, decryptTodoTitleWithStatus, encryptNoteTitle, encryptTodoTitle, decryptWorkspaceTitle, decryptWorkspaceDescription } from '@/lib/encrypted-api'
+import { decryptNoteContentWithStatus, decryptNoteTitleWithStatus, decryptTodoTitleWithStatus, decryptNoteTitle, encryptNoteTitle, encryptTodoTitle, decryptWorkspaceTitle, decryptWorkspaceDescription } from '@/lib/encrypted-api'
 import { rotateWorkspaceEncryptionKey } from '@/lib/workspace-rotation'
 import { supabase } from '@/lib/supabase'
 import { logActivity } from '@/lib/activity'
+import { getPlanLimits, isAtLimit, formatLimit } from '@/lib/plans'
+import { applyAutoArchiveCompleted } from '@/lib/automation'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -58,6 +60,7 @@ import { useRouter } from 'next/navigation'
 import { DashboardHeader } from './dashboard-header'
 import { DashboardQuickActions } from './dashboard-quick-actions'
 import { DashboardRecentItems } from './dashboard-recent-items'
+import { ActivityFeed } from './activity-feed'
 import { useTheme } from 'next-themes'
 import { format, formatDistanceToNow } from 'date-fns'
 import dynamic from 'next/dynamic'
@@ -107,6 +110,7 @@ export function Dashboard() {
 
   const [decryptedNotes, setDecryptedNotes] = useState<Map<string, { title: string; preview: string; updatedAt: string }>>(new Map())
   const [decryptedTodos, setDecryptedTodos] = useState<Map<string, { title: string; updatedAt: string }>>(new Map())
+  const [folderNames, setFolderNames] = useState<Record<string, string>>({})
   const decryptedNotesRef = useRef<Map<string, { title: string; preview: string; updatedAt: string }>>(new Map())
   const decryptedTodosRef = useRef<Map<string, { title: string; updatedAt: string }>>(new Map())
 
@@ -119,12 +123,14 @@ export function Dashboard() {
         .from('notes')
         .select('*')
         .eq('is_archived', false)
+        .is('deleted_at', null)
 
       // 2. Fetch non-archived todo lists and their items
       const { data: todosData, error: todosErr } = await supabase
         .from('todo_lists')
         .select('*, todo_items(*)')
         .eq('is_archived', false)
+        .is('deleted_at', null)
 
       // 3. Fetch owned workspaces
       const { data: ownedWorkspaces, error: ownedErr } = await supabase
@@ -317,6 +323,25 @@ export function Dashboard() {
     if (!isLoading) decryptData()
   }, [notes, todoLists, isLoading])
 
+  // Apply automation rules (e.g. auto-archive completed lists) after load.
+  useEffect(() => {
+    if (isLoading) return
+    applyAutoArchiveCompleted().catch(() => {})
+  }, [isLoading, todoLists])
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      const entries = await Promise.all(
+        folders.map(async (f) => [f.id, await decryptNoteTitle(f.name, null).catch(() => f.name)] as const)
+      )
+      if (!cancelled) setFolderNames(Object.fromEntries(entries))
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [folders])
+
   const handleQuickCreateNote = async () => {
     if (!currentUser || !selectedWs) return
     const plainTitle = quickNoteTitle.trim() || 'Untitled Note'
@@ -438,16 +463,12 @@ export function Dashboard() {
     if (!selectedWs || !inviteEmail.trim()) return
 
     // Enforce collaborator limit
-    const membersCount = wsMembers.filter((m) => m.role === 'member').length
+    const membersCount = wsMembers.length
     const extraCollabs = useAppStore.getState().extraCollaborators
-    
-    let maxCollabs = 2
-    if (userTier === 'premium') maxCollabs = 15
-    if (userTier === 'ultra') maxCollabs = 35
-    maxCollabs += extraCollabs
+    const maxCollabs = getPlanLimits(userTier).collaborators + extraCollabs
 
-    if (membersCount >= maxCollabs) {
-      toast.error(`Limit reached: Maximum ${maxCollabs} collaborators allowed. Please upgrade or buy an add-on.`)
+    if (isAtLimit(membersCount, maxCollabs)) {
+      toast.error(`Limit reached: Maximum ${formatLimit(maxCollabs)} collaborators allowed. Please upgrade or buy an add-on.`)
       return
     }
 
@@ -732,7 +753,7 @@ export function Dashboard() {
                       className={`flex items-center gap-2 px-3 py-2 rounded-xl glass-card card-lift inner-glow group ${selectedFolderId === f.id ? 'border-[#6366f1]/50 bg-[#6366f1]/10' : ''}`}
                     >
                       <FolderOpen className={`w-3.5 h-3.5 ${selectedFolderId === f.id ? 'text-[#6366f1] fill-[#6366f1]' : 'text-muted-foreground'}`} />
-                      <span className="text-sm font-medium">{f.name}</span>
+                      <span className="text-sm font-medium">{folderNames[f.id] || f.name}</span>
                     </motion.button>
                   ))}
                 </motion.div>
@@ -788,6 +809,10 @@ export function Dashboard() {
                   decryptedTodos={decryptedTodos}
                   isEncryptedSession={isEncryptedSession}
                 />
+                </div>
+
+                <div className="mt-6">
+                  <ActivityFeed />
                 </div>
               </>
             )}

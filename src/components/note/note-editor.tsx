@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { useAppStore } from '@/stores/app-store'
 import { encryptNoteContent, encryptNoteTitle, decryptNoteContent, decryptNoteTitle } from '@/lib/encrypted-api'
 import { logActivity } from '@/lib/activity'
+import { trashNote, restoreNote } from '@/lib/trash'
 import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -17,6 +18,10 @@ import { useParams, useRouter } from 'next/navigation'
 import { NoteHeader } from './note-header'
 import { NoteHistoryDialog } from './note-history-dialog'
 import { NoteAttachments } from './note-attachments'
+import { getPlanLimits, isAtLimit, formatLimit } from '@/lib/plans'
+import { canEditWorkspace } from '@/lib/roles'
+import { CommentsPanel } from '@/components/comments/comments-panel'
+import { ShareLinkButton } from '@/components/comments/share-link-button'
 
 export function NoteEditor() {
   const currentUser = useAppStore((s) => s.currentUser)
@@ -43,6 +48,7 @@ export function NoteEditor() {
   
   const [isLockedByOther, setIsLockedByOther] = useState(false)
   const [lockedByInfo, setLockedByInfo] = useState<{name: string, email: string} | null>(null)
+  const [myRole, setMyRole] = useState<string | null>(null)
 
   const titleRef = useRef(title)
   const contentRef = useRef(content)
@@ -57,6 +63,29 @@ export function NoteEditor() {
     titleRef.current = title
     contentRef.current = content
   }, [title, content])
+
+  // Resolve the signed-in user's workspace role to enforce viewer read-only.
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      if (!note?.workspaceId || !currentUser?.id) {
+        setMyRole(null)
+        return
+      }
+      const { data } = await supabase
+        .from('workspace_members')
+        .select('role')
+        .eq('workspace_id', note.workspaceId)
+        .eq('user_id', currentUser.id)
+        .maybeSingle()
+      if (!cancelled) setMyRole(data?.role ?? null)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [note?.workspaceId, currentUser?.id])
+
+  const canEditContent = !note?.workspaceId || note?.authorId === currentUser?.id || canEditWorkspace(myRole)
 
   // Load note data & decrypt + subscribe to realtime updates
   useEffect(() => {
@@ -237,18 +266,17 @@ export function NoteEditor() {
   const handleDelete = async () => {
     if (!selectedNoteId) return
     try {
-      const { error } = await supabase
-        .from('notes')
-        .delete()
-        .eq('id', selectedNoteId)
-
-      if (error) {
-        toast.error(error.message || 'Failed to delete note')
-        return
-      }
-
+      await trashNote(selectedNoteId)
       removeNote(selectedNoteId)
-      toast.success('Note deleted')
+      toast.success('Note moved to trash', {
+        action: {
+          label: 'Undo',
+          onClick: async () => {
+            await restoreNote(selectedNoteId)
+            router.refresh()
+          },
+        },
+      })
       setDeleteConfirmOpen(false)
       router.push('/dashboard/notes')
     } catch {
@@ -273,14 +301,26 @@ export function NoteEditor() {
     const file = e.target.files?.[0]
     if (!file || !note) return
 
-    if (userTier === 'free' && (note.attachments?.length || 0) >= 2) {
-      toast.error('Free tier is limited to 2 attachments per note.')
+    const limits = getPlanLimits(userTier)
+    const currentCount = note.attachments?.length || 0
+
+    if (currentCount === 0) {
+      const notesWithAttachments = notes.filter((n) => (n.attachments?.length || 0) > 0).length
+      if (isAtLimit(notesWithAttachments, limits.attachmentNotes)) {
+        toast.error(`Your plan allows attachments on up to ${formatLimit(limits.attachmentNotes)} notes. Please upgrade for unlimited.`)
+        if (fileInputRef.current) fileInputRef.current.value = ''
+        return
+      }
+    }
+
+    if (currentCount >= limits.attachmentsPerNote) {
+      toast.error(`You can add up to ${limits.attachmentsPerNote} attachments per note.`)
       if (fileInputRef.current) fileInputRef.current.value = ''
       return
     }
 
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error('File size cannot exceed 5MB.')
+    if (file.size > limits.attachmentSizeMb * 1024 * 1024) {
+      toast.error(`File size cannot exceed ${limits.attachmentSizeMb}MB.`)
       if (fileInputRef.current) fileInputRef.current.value = ''
       return
     }
@@ -495,6 +535,21 @@ export function NoteEditor() {
                     </div>
                   )}
 
+                  {/* Viewer / permission banner */}
+                  {!canEditContent && !isLockedByOther && (
+                    <div className="mb-4 bg-muted/40 border border-border/50 rounded-xl p-3 flex items-center gap-3">
+                      <div className="p-2 bg-muted rounded-full shrink-0">
+                        <Lock className="w-4 h-4 text-muted-foreground" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-medium">View-only access</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Your workspace role does not allow editing this note.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Attachments Section */}
                   <NoteAttachments
                     attachments={note?.attachments}
@@ -523,8 +578,25 @@ export function NoteEditor() {
                         }
                       }, 1500)
                     }}
-                    disabled={initialLoad || isLockedByOther}
+                    disabled={initialLoad || isLockedByOther || !canEditContent}
                   />
+
+                  <div className="mt-6 pt-6 border-t border-border/40">
+                    <div className="flex items-center justify-end mb-3">
+                      {note?.id && (
+                        <ShareLinkButton
+                          entityType="note"
+                          entityId={note.id}
+                          workspaceId={note.workspaceId ?? null}
+                        />
+                      )}
+                    </div>
+                    <CommentsPanel
+                      entityType="note"
+                      entityId={note?.id || ''}
+                      workspaceId={note?.workspaceId ?? null}
+                    />
+                  </div>
                 </div>
               </>
             )}

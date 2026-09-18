@@ -1,83 +1,74 @@
 import { NextResponse } from 'next/server'
 import Safepay from '@sfpy/node-core'
 import { createClient } from '@supabase/supabase-js'
+import { z } from 'zod'
+import { getSupabaseAdminConfig, getSafepayConfig, getAppUrl } from '@/lib/env'
+
+const TIER_AMOUNTS: Record<string, number> = {
+  premium: 1500,
+  ultra: 4000,
+}
+
+const checkoutSchema = z.object({
+  tier: z.enum(['premium', 'ultra']),
+})
 
 export async function POST(req: Request) {
   try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-    
-    if (!supabaseUrl || !supabaseServiceKey) {
-      console.warn('Supabase credentials missing, cannot verify auth');
-    }
-    
-    // We only create it if we have credentials, else the API call will fail gracefully later
-    const supabaseAdmin = supabaseUrl && supabaseServiceKey 
-      ? createClient(supabaseUrl, supabaseServiceKey)
-      : null;
-    const isProd = process.env.NODE_ENV === 'production' && !!process.env.SAFEPAY_API_KEY;
-    const environment = isProd ? 'production' : 'sandbox';
-    const host = isProd ? 'https://api.getsafepay.com' : 'https://sandbox.api.getsafepay.com';
-    
-    // Ensure we have a secret key. In a real app, you would have different keys for dev/prod.
-    const secretKey = process.env.SAFEPAY_API_KEY || 'sec_dummy_key_for_dev';
+    const { url: supabaseUrl, serviceRoleKey } = getSupabaseAdminConfig()
+    const { apiKey, environment, host } = getSafepayConfig()
 
-    const safepay = new Safepay(secretKey, {
-      authType: 'secret',
-      host: host,
-    });
+    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey)
 
+    // Authenticate the caller via their Supabase access token.
     const authHeader = req.headers.get('Authorization')
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Unauthorized: missing or invalid Authorization header' }, { status: 401 })
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    if (!supabaseAdmin) {
-      return NextResponse.json({ error: 'Server misconfiguration: Database client not initialized' }, { status: 500 })
-    }
+    const token = authHeader.slice('Bearer '.length)
+    const {
+      data: { user },
+      error: authError,
+    } = await supabaseAdmin.auth.getUser(token)
 
-    const token = authHeader.split(' ')[1]
-    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token)
-    
     if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized: invalid token' }, { status: 401 })
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const userId = user.id;
-    const { tier } = await req.json()
-
-    // Determine amount based on tier (assuming PKR)
-    let amount = 0;
-    if (tier === 'premium') {
-      amount = 1500; // 1500 PKR
-    } else if (tier === 'ultra') {
-      amount = 4000; // 4000 PKR
-    }
-
-    if (!amount) {
+    // Validate and constrain input.
+    const body = await req.json().catch(() => null)
+    const parsed = checkoutSchema.safeParse(body)
+    if (!parsed.success) {
       return NextResponse.json({ error: 'Invalid tier specified' }, { status: 400 })
     }
 
-    const cancelUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/dashboard/pricing?canceled=true`;
-    const redirectUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/dashboard/pricing?success=true`;
+    const { tier } = parsed.data
+    const amount = TIER_AMOUNTS[tier]
+    const userId = user.id
+
+    const safepay = new Safepay(apiKey, { authType: 'secret', host })
+
+    const appUrl = getAppUrl()
+    const cancelUrl = `${appUrl}/dashboard/pricing?canceled=true`
+    const redirectUrl = `${appUrl}/dashboard/pricing?success=true`
 
     // 1. Create a payment session (Tracker)
     const sessionResponse = await safepay.payments.session.setup({
-      merchant_api_key: secretKey,
+      merchant_api_key: apiKey,
       intent: 'CYBERSOURCE',
       mode: 'payment',
       currency: 'PKR',
-      amount: amount * 100, // Safepay typically expects amounts in the lowest denomination (paisa/cents)
-    });
+      amount: amount * 100, // lowest denomination (paisa)
+    })
 
-    const trackerToken = sessionResponse.data.token;
+    const trackerToken = sessionResponse.data.token
 
     // 2. Create an authentication token (Passport)
-    // Sometimes passport creation is done for client-side, but Safepay Checkout URL needs `tbt`
-    const passportResponse = await safepay.client.passport.create();
-    const tbtToken = passportResponse.data.token;
+    const passportResponse = await safepay.client.passport.create()
+    const tbtToken = passportResponse.data.token
 
-    // 3. Generate the Checkout URL
+    // 3. Generate the Checkout URL, binding the user id as the reference.
     const checkoutUrl = safepay.checkout.createCheckoutUrl({
       env: environment,
       tracker: trackerToken,
@@ -86,15 +77,12 @@ export async function POST(req: Request) {
       user_id: userId,
       cancel_url: cancelUrl,
       redirect_url: redirectUrl,
-    });
+    })
 
     return NextResponse.json({ url: checkoutUrl })
-    
-  } catch (error: any) {
+  } catch (error) {
+    // Log server-side only; never return internal error details to the client.
     console.error('Safepay checkout error:', error)
-    return NextResponse.json(
-      { error: error.message || 'Internal server error' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Unable to start checkout. Please try again.' }, { status: 500 })
   }
 }

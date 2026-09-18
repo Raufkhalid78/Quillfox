@@ -1,13 +1,14 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Loader2, UserPlus } from 'lucide-react'
+import { Loader2, UserPlus, Clock } from 'lucide-react'
 import { useAppStore } from '@/stores/app-store'
 import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
@@ -30,6 +31,26 @@ export function MultiInviteDialog({ children, defaultWorkspaceId }: MultiInviteD
   const [emailsInput, setEmailsInput] = useState('')
   const [selectedWsIds, setSelectedWsIds] = useState<string[]>(defaultWorkspaceId ? [defaultWorkspaceId] : [])
   const [isInviting, setIsInviting] = useState(false)
+  const [role, setRole] = useState<'admin' | 'editor' | 'viewer'>('editor')
+  const [pendingInvites, setPendingInvites] = useState<any[]>([])
+
+  const ownedWorkspaceIds = ownedWorkspaces.map((w) => w.id).join(',')
+
+  useEffect(() => {
+    if (!isOpen || ownedWorkspaces.length === 0) return
+    let cancelled = false
+    ;(async () => {
+      const { data } = await supabase
+        .from('workspace_invites')
+        .select('id, email, role, workspace_id, created_at')
+        .in('workspace_id', ownedWorkspaces.map((w) => w.id))
+        .is('accepted_at', null)
+      if (!cancelled) setPendingInvites(data ?? [])
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [isOpen, ownedWorkspaceIds])
 
   const handleToggleWorkspace = (id: string) => {
     setSelectedWsIds(prev => 
@@ -62,8 +83,24 @@ export function MultiInviteDialog({ children, defaultWorkspaceId }: MultiInviteD
           .single()
 
         if (!profile) {
-          toast.error(`User not found: ${email}`)
-          failureCount++
+          // No account yet — record a pending invite the owner can complete later.
+          const token = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2)
+          for (const wsId of selectedWsIds) {
+            const { error } = await supabase.from('workspace_invites').upsert(
+              {
+                id: `${wsId}:${email}`,
+                workspace_id: wsId,
+                email,
+                role,
+                invited_by: currentUser.id,
+                token,
+                accepted_at: null,
+              },
+              { onConflict: 'id' }
+            )
+            if (!error) successCount++
+            else failureCount++
+          }
           continue
         }
 
@@ -95,7 +132,7 @@ export function MultiInviteDialog({ children, defaultWorkspaceId }: MultiInviteD
               .insert({
                 user_id: inviteeId,
                 workspace_id: wsId,
-                role: 'member',
+                role,
                 encrypted_workspace_key: wrappedKey,
                 joined_at: new Date().toISOString()
               })
@@ -185,6 +222,35 @@ export function MultiInviteDialog({ children, defaultWorkspaceId }: MultiInviteD
               )}
             </ScrollArea>
           </div>
+          <div className="space-y-2">
+            <Label>Role</Label>
+            <Select value={role} onValueChange={(v) => setRole(v as 'admin' | 'editor' | 'viewer')}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="admin">Admin — manage members</SelectItem>
+                <SelectItem value="editor">Editor — edit content</SelectItem>
+                <SelectItem value="viewer">Viewer — read-only</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {pendingInvites.length > 0 && (
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5" /> Pending invites
+              </Label>
+              <div className="rounded-md border border-border/50 divide-y divide-border/50 max-h-[100px] overflow-y-auto">
+                {pendingInvites.map((inv) => (
+                  <div key={inv.id} className="flex items-center justify-between px-2 py-1.5 text-xs">
+                    <span className="truncate">{inv.email}</span>
+                    <span className="text-muted-foreground capitalize">{inv.role}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="flex justify-end gap-2">

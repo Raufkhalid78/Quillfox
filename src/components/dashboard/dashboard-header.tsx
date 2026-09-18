@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { PenLine, ShieldCheck, ShieldAlert, Sun, Moon, Settings, Crown, LogOut } from 'lucide-react'
+import { PenLine, ShieldCheck, ShieldAlert, Sun, Moon, Settings, Crown, LogOut, Search } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 // Helper for initials
@@ -62,9 +62,33 @@ export function DashboardHeader({
       </div>
 
       <div className="flex items-center gap-2 shrink-0">
+        {/* Global search */}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => window.dispatchEvent(new Event('open-command-palette'))}
+          className="hidden sm:flex h-8 gap-2 text-xs text-muted-foreground rounded-lg"
+          aria-label="Search notes, todos and workspaces"
+        >
+          <Search className="w-3.5 h-3.5" aria-hidden="true" />
+          <span>Search</span>
+          <kbd className="ml-2 hidden md:inline-flex items-center rounded border border-border px-1.5 py-0.5 text-[10px]">
+            ⌘K
+          </kbd>
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => window.dispatchEvent(new Event('open-command-palette'))}
+          className="sm:hidden h-8 w-8"
+          aria-label="Search"
+        >
+          <Search className="w-4 h-4" aria-hidden="true" />
+        </Button>
+
         {/* Mobile theme toggle */}
         <Button aria-label="Toggle theme" variant="ghost" size="icon" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} className="md:hidden h-8 w-8">
-          {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+          {theme === 'dark' ? <Sun className="w-4 h-4" aria-hidden="true" /> : <Moon className="w-4 h-4" aria-hidden="true" />}
         </Button>
         
         <DropdownMenu>

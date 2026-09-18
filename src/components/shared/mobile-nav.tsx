@@ -22,6 +22,7 @@ import {
   PenLine,
   Archive,
   Settings,
+  Trash2,
 } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import * as React from 'react'
@@ -34,6 +35,7 @@ const navItems = [
   { key: 'todos', view: 'todos' as const, icon: ListTodo, label: 'Todos' },
   { key: 'workspaces', view: 'workspaces' as const, icon: Layers, label: 'Workspaces' },
   { key: 'archive', view: 'archive' as const, icon: Archive, label: 'Archive' },
+  { key: 'trash', view: 'trash' as const, icon: Trash2, label: 'Trash' },
   { key: 'settings', view: 'settings' as const, icon: Settings, label: 'Settings' },
 ]
 
@@ -53,6 +55,7 @@ export function MobileNav() {
     if (key === 'todos') return pathname.startsWith('/dashboard/todos')
     if (key === 'workspaces') return pathname.startsWith('/dashboard/workspaces')
     if (key === 'archive') return pathname.startsWith('/dashboard/archive')
+    if (key === 'trash') return pathname.startsWith('/dashboard/trash')
     if (key === 'settings') return pathname.startsWith('/dashboard/settings')
     return false
   }

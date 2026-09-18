@@ -21,6 +21,7 @@ import {
 import { useTheme } from 'next-themes'
 import { format } from 'date-fns'
 import { generateMasterKey, exportKeyToString, encryptWithPublicKey } from '@/lib/e2ee'
+import { getPlanLimits, isAtLimit, formatLimit } from '@/lib/plans'
 
 const stagger = {
   hidden: {},
@@ -135,18 +136,17 @@ export function WorkspacesView() {
 
   const handleCreate = async () => {
     if (!currentUser || isCreating) return
-    setIsCreating(true)
 
     // Enforce workspace creation limit based on subscription tier
+    const limits = getPlanLimits(userTier)
     const ownedWorkspacesCount = workspaces.filter((w) => w.ownerId === currentUser.id).length
-    if (userTier === 'free' && ownedWorkspacesCount >= 1) {
-      toast.error('Free tier is limited to 1 workspace. Please upgrade to Premium or Ultra Premium!')
+    if (isAtLimit(ownedWorkspacesCount, limits.workspaces)) {
+      toast.error(`Your plan allows up to ${formatLimit(limits.workspaces)} workspaces. Please upgrade to add more.`)
       return
     }
-    if (userTier === 'premium' && ownedWorkspacesCount >= 10) {
-      toast.error('Premium tier is limited to 10 workspaces. Please upgrade to Ultra Premium!')
-      return
-    }
+
+    setIsCreating(true)
+
 
     const title = newTitle.trim() || 'Untitled Workspace'
     const wsId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2)

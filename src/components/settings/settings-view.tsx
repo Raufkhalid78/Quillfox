@@ -28,6 +28,7 @@ import { toast } from 'sonner'
 import { Settings, ShieldCheck, Loader2, LogOut, Sun, Moon, Trash2, Mail, User, Calendar, KeyRound, CheckCircle2, Crown, Lock, ShieldAlert, Camera, Eye, EyeOff, CreditCard } from 'lucide-react'
 import { DataExport } from './data-export'
 import { SessionManagement } from './session-management'
+import { AutomationSettings } from './automation-settings'
 import { useTheme } from 'next-themes'
 import { format } from 'date-fns'
 import { Switch } from '@/components/ui/switch'
@@ -48,12 +49,31 @@ import {
 } from '@/components/ui/select'
 import { wrapEncryptionKey, base64ToUint8Array, deriveKey, encrypt, decrypt, isEncrypted } from '@/lib/e2ee'
 
-async function hashPasscode(passcode: string): Promise<string> {
-  const encoder = new TextEncoder()
-  const data = encoder.encode(passcode)
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data)
-  const hashArray = Array.from(new Uint8Array(hashBuffer))
-  return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('')
+async function hashPasscode(passcode: string, salt: Uint8Array): Promise<string> {
+  // PBKDF2-SHA256 with the user's encryption salt. Stored as `v1:<salt>:<hash>`
+  // so the format is self-describing and future-proof. (Unlock is ultimately
+  // verified by AES-GCM key unwrap; this hash is a server-side presence/equality
+  // indicator and must not be a bare unsalted digest.)
+  const enc = new TextEncoder()
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw',
+    enc.encode(passcode),
+    'PBKDF2',
+    false,
+    ['deriveBits']
+  )
+  const bits = await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', salt: salt as BufferSource, iterations: 100_000, hash: 'SHA-256' },
+    keyMaterial,
+    256
+  )
+  const hash = Array.from(new Uint8Array(bits))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('')
+  const saltHex = Array.from(salt)
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('')
+  return `v1:${saltHex}:${hash}`
 }
 
 const fadeUp = {
@@ -422,10 +442,13 @@ export function SettingsView() {
       return
     }
 
-    setIsSavingPasscode(true)
+setIsSavingPasscode(true)
     try {
-      const { ciphertext, iv } = await wrapEncryptionKey(encryptionKey, passcodeVal, encryptionSalt)
-      const hash = await hashPasscode(passcodeVal)
+      const saltArray = encryptionSalt instanceof Uint8Array
+        ? encryptionSalt
+        : Uint8Array.from(Object.values(encryptionSalt as any))
+      const { ciphertext, iv } = await wrapEncryptionKey(encryptionKey, passcodeVal, saltArray)
+      const hash = await hashPasscode(passcodeVal, saltArray)
 
       const { error } = await supabase
         .from('profiles')
@@ -693,27 +716,33 @@ export function SettingsView() {
                           )}
                         </div>
                       </div>
-                      <div className="flex flex-wrap gap-2">
+<div className="flex flex-wrap gap-2">
                         {userTier === 'free' && (
-                          <Button variant="default" size="sm" onClick={async () => {
-                            const { error } = await supabase.from('profiles').update({ tier: 'premium' }).eq('id', currentUser.id);
-                            if (!error) { setTier('premium'); toast.success('Upgraded to Premium!'); }
-                          }} className="bg-[#d97706] hover:bg-[#d97706]/90 text-white gap-1">
+                          <Button variant="default" size="sm" onClick={() => router.push('/dashboard/pricing')} className="bg-[#d97706] hover:bg-[#d97706]/90 text-white gap-1">
                             <Crown className="w-4 h-4" /> Upgrade to Premium
                           </Button>
                         )}
                         {userTier === 'premium' && (
-                          <Button variant="default" size="sm" onClick={async () => {
-                            const { error } = await supabase.from('profiles').update({ tier: 'ultra' }).eq('id', currentUser.id);
-                            if (!error) { setTier('ultra'); toast.success('Upgraded to Ultra!'); }
-                          }} className="bg-gradient-to-r from-[#7c3aed] to-[#a855f7] hover:opacity-90 text-white gap-1">
+                          <Button variant="default" size="sm" onClick={() => router.push('/dashboard/pricing')} className="bg-gradient-to-r from-[#7c3aed] to-[#a855f7] hover:opacity-90 text-white gap-1">
                             <Crown className="w-4 h-4" /> Upgrade to Ultra
                           </Button>
                         )}
                         {userTier !== 'free' && (
                           <Button variant="outline" size="sm" onClick={async () => {
-                            const { error } = await supabase.from('profiles').update({ tier: 'free' }).eq('id', currentUser.id);
-                            if (!error) { setTier('free'); toast.success('Downgraded to Free'); }
+                            try {
+                              const { data: { session } } = await supabase.auth.getSession()
+                              const token = session?.access_token
+                              if (!token) throw new Error('Authentication required')
+                              const res = await fetch('/api/account/downgrade', {
+                                method: 'POST',
+                                headers: { Authorization: `Bearer ${token}` },
+                              })
+                              if (!res.ok) throw new Error('Failed to downgrade')
+                              setTier('free')
+                              toast.success('Downgraded to Free')
+                            } catch {
+                              toast.error('Failed to downgrade plan')
+                            }
                           }} className="text-muted-foreground hover:text-destructive border-border/50">
                             Downgrade to Free
                           </Button>
@@ -731,21 +760,11 @@ export function SettingsView() {
                             Currently purchased: <strong className="text-foreground">{useAppStore.getState().extraCollaborators} extra seats</strong>
                           </p>
                         </div>
-                        <Button 
+<Button 
                           variant="outline" 
                           size="sm" 
                           className="shrink-0 gap-1.5 border-[#059669]/30 text-[#059669] hover:bg-[#059669]/10"
-                          onClick={async () => {
-                            const store = useAppStore.getState()
-                            const newAmount = store.extraCollaborators + 10
-                            const { error } = await supabase.from('profiles').update({ extra_collaborators: newAmount }).eq('id', currentUser.id);
-                            if (!error) {
-                              store.setExtraCollaborators(newAmount)
-                              toast.success('Successfully purchased 10 extra collaborators!')
-                            } else {
-                              toast.error('Failed to process purchase.')
-                            }
-                          }}
+                          onClick={() => router.push('/dashboard/pricing')}
                         >
                           <CreditCard className="w-4 h-4" />
                           Buy 10 Seats ($5/mo)
@@ -1016,6 +1035,7 @@ export function SettingsView() {
 
                   <motion.div variants={fadeUp}>
                     <DataExport />
+                    <AutomationSettings />
                   </motion.div>
 
                 {/* Danger Zone Section */}

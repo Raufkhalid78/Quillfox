@@ -15,10 +15,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { toast } from 'sonner'
-import { Plus, CheckSquare, Clock, ShieldCheck, PenLine, LogOut, Sun, Moon, ListTodo, Search, Loader2, CalendarDays } from 'lucide-react'
+import { Plus, CheckSquare, Clock, ShieldCheck, PenLine, LogOut, Sun, Moon, ListTodo, Search, Loader2, CalendarDays, Archive, Trash2, X, CheckCircle2, Circle } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { formatDistanceToNow, format } from 'date-fns'
 import { getDueDateColor } from '@/lib/utils'
+import { getPlanLimits, isAtLimit, formatLimit } from '@/lib/plans'
 
 const stagger = {
   hidden: {},
@@ -53,6 +54,23 @@ export function TodosList() {
   const { theme, setTheme } = useTheme()
   const contentRef = useRef<HTMLDivElement>(null)
 
+  const [selectionMode, setSelectionMode] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+
+  const toggleSelected = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const exitSelection = () => {
+    setSelectionMode(false)
+    setSelectedIds(new Set())
+  }
+
   const [decryptedTodos, setDecryptedTodos] = useState<Map<string, string>>(new Map())
 
   const fetchData = async () => {
@@ -63,6 +81,7 @@ export function TodosList() {
         .from('todo_lists')
         .select('*, todo_items(*)')
         .eq('is_archived', false)
+        .is('deleted_at', null)
         .order('updated_at', { ascending: false })
 
       if (error) {
@@ -132,14 +151,16 @@ export function TodosList() {
 
   const handleCreate = async () => {
     if (!currentUser || isCreating) return
-    setIsCreating(true)
 
-    // Enforce Free tier todo lists limit (3 todo lists max)
+    // Enforce todo list limit for the user's plan
+    const limits = getPlanLimits(userTier)
     const ownedTodoListsCount = todoLists.filter((t) => t.authorId === currentUser.id && !t.isArchived).length
-    if (userTier === 'free' && ownedTodoListsCount >= 3) {
-      toast.error('Free tier is limited to 3 todo lists. Please upgrade to Premium or Ultra Premium!')
+    if (isAtLimit(ownedTodoListsCount, limits.todoLists)) {
+      toast.error(`Your plan allows up to ${formatLimit(limits.todoLists)} todo lists. Please upgrade to add more.`)
       return
     }
+
+    setIsCreating(true)
 
     const plainTitle = newTitle.trim() || 'Untitled Todo List'
     const todoListId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2)
@@ -185,6 +206,35 @@ export function TodosList() {
     } finally {
       setIsCreating(false)
     }
+  }
+
+  const handleBulkArchive = async () => {
+    const ids = [...selectedIds]
+    if (ids.length === 0) return
+    const { error } = await supabase.from('todo_lists').update({ is_archived: true }).in('id', ids)
+    if (error) {
+      toast.error('Bulk archive failed')
+      return
+    }
+    setTodoLists(todoLists.map((t) => (selectedIds.has(t.id) ? { ...t, isArchived: true } : t)))
+    toast.success(`Archived ${ids.length} list${ids.length === 1 ? '' : 's'}`)
+    exitSelection()
+  }
+
+  const handleBulkTrash = async () => {
+    const ids = [...selectedIds]
+    if (ids.length === 0) return
+    const { error } = await supabase
+      .from('todo_lists')
+      .update({ deleted_at: new Date().toISOString() })
+      .in('id', ids)
+    if (error) {
+      toast.error('Bulk delete failed')
+      return
+    }
+    setTodoLists(todoLists.filter((t) => !selectedIds.has(t.id)))
+    toast.success(`Moved ${ids.length} list${ids.length === 1 ? '' : 's'} to trash`)
+    exitSelection()
   }
 
   const activeTodos = todoLists
@@ -261,6 +311,15 @@ export function TodosList() {
               {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </Button>
             <Button
+              variant="ghost"
+              size="sm"
+              className="gap-1.5 text-xs h-8"
+              onClick={() => (selectionMode ? exitSelection() : setSelectionMode(true))}
+            >
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">{selectionMode ? 'Cancel' : 'Select'}</span>
+            </Button>
+            <Button
               size="sm"
               className="gap-1.5 bg-gradient-to-r from-[#d97706] to-[#f59e0b] text-white hover:from-[#d97706]/90 hover:to-[#f59e0b]/90 rounded-lg text-xs h-8 btn-shine"
               onClick={() => setCreateOpen(true)}
@@ -318,10 +377,27 @@ export function TodosList() {
                   return (
                     <motion.div key={todo.id} variants={fadeUp}>
                       <button
-                        onClick={() => router.push(`/dashboard/todos/${todo.id}`)}
-                        className="w-full text-left rounded-xl glass-card card-lift inner-glow p-4 group"
+                        onClick={() => {
+                          if (selectionMode) {
+                            toggleSelected(todo.id)
+                            return
+                          }
+                          router.push(`/dashboard/todos/${todo.id}`)
+                        }}
+                        className={`w-full text-left rounded-xl glass-card card-lift inner-glow p-4 group ${
+                          selectionMode && selectedIds.has(todo.id) ? 'ring-2 ring-[#d97706]/50' : ''
+                        }`}
                       >
                         <div className="flex items-start gap-3">
+                          {selectionMode && (
+                            <div className="mt-0.5 shrink-0">
+                              {selectedIds.has(todo.id) ? (
+                                <CheckCircle2 className="w-5 h-5 text-[#d97706]" />
+                              ) : (
+                                <Circle className="w-5 h-5 text-muted-foreground/50" />
+                              )}
+                            </div>
+                          )}
                           <div className="mt-0.5 w-9 h-9 rounded-lg bg-[#d97706]/8 dark:bg-[#d97706]/15 flex items-center justify-center shrink-0">
                             <CheckSquare className="w-4 h-4 text-[#d97706]/70 dark:text-[#fbbf24]/70" />
                           </div>
@@ -426,6 +502,37 @@ export function TodosList() {
           </div>
         </main>
       </div>
+
+      {selectionMode && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-1.5 rounded-full border border-border bg-popover px-3 py-2 shadow-xl">
+          <span className="text-xs font-medium px-1 whitespace-nowrap">{selectedIds.size} selected</span>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-xs h-7"
+            onClick={() => setSelectedIds(new Set(filteredTodos.map((t) => t.id)))}
+          >
+            Select all
+          </Button>
+          <Button variant="ghost" size="sm" className="gap-1 text-xs h-7" onClick={handleBulkArchive} disabled={selectedIds.size === 0}>
+            <Archive className="w-3.5 h-3.5" />
+            Archive
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="gap-1 text-xs h-7 text-destructive hover:text-destructive"
+            onClick={handleBulkTrash}
+            disabled={selectedIds.size === 0}
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            Trash
+          </Button>
+          <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Exit selection" onClick={exitSelection}>
+            <X className="w-4 h-4" />
+          </Button>
+        </div>
+      )}
 
       {/* Create Todo Dialog */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>

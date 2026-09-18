@@ -22,7 +22,6 @@ import {
   Zap,
   Shield,
   Sparkles,
-  Infinity,
   ArrowLeft,
   Loader2,
 } from 'lucide-react'
@@ -80,14 +79,13 @@ const plans: Plan[] = [
     iconGradient: 'from-[#059669] to-[#0d9488]',
     iconBg: 'bg-[#059669]/10 dark:bg-[#059669]/20',
     features: [
-      { text: '2 active devices', included: true },
       { text: 'Up to 2 collaborators', included: true },
       { text: '10 notes max', included: true },
       { text: '3 todo lists max', included: true },
       { text: '1 workspace', included: true },
+      { text: 'Attachments on up to 2 notes (5 MB each)', included: true },
       { text: 'End-to-end encryption', included: true },
-      { text: 'Priority support', included: false },
-      { text: 'Custom themes', included: false },
+      { text: 'Multi-device sync', included: true },
     ],
     cta: 'Current Plan',
     ctaVariant: 'outline',
@@ -105,15 +103,15 @@ const plans: Plan[] = [
     iconGradient: 'from-[#d97706] to-[#f59e0b]',
     iconBg: 'bg-[#d97706]/10 dark:bg-[#d97706]/20',
     features: [
-      { text: 'Up to 3 devices', included: true, highlight: true },
       { text: 'Up to 15 collaborators', included: true, highlight: true },
-      { text: '+$5/mo per 10 extra collaborators', included: true },
+      { text: 'Extra collaborator seats available', included: true },
       { text: 'Unlimited notes', included: true },
       { text: 'Unlimited todo lists', included: true },
       { text: '10 workspaces', included: true },
+      { text: 'Attachments on unlimited notes (5 MB each)', included: true },
       { text: 'End-to-end encryption', included: true },
-      { text: 'Priority support', included: true },
-      { text: 'Custom themes', included: false },
+      { text: 'Email support', included: true },
+      { text: 'Multi-device sync', included: true },
     ],
     cta: 'Upgrade to Premium',
     ctaVariant: 'default',
@@ -134,15 +132,15 @@ const plans: Plan[] = [
     iconGradient: 'from-[#7c3aed] to-[#a855f7]',
     iconBg: 'bg-[#7c3aed]/10 dark:bg-[#7c3aed]/20',
     features: [
-      { text: 'Up to 5 devices', included: true, highlight: true },
       { text: 'Up to 35 collaborators', included: true, highlight: true },
-      { text: '+$5/mo per 10 extra collaborators', included: true },
+      { text: 'Extra collaborator seats available', included: true },
       { text: 'Unlimited notes', included: true },
       { text: 'Unlimited todo lists', included: true },
       { text: 'Unlimited workspaces', included: true },
+      { text: 'Attachments on unlimited notes (5 MB each)', included: true },
       { text: 'End-to-end encryption', included: true },
       { text: 'Priority support', included: true },
-      { text: 'Custom themes & branding', included: true },
+      { text: 'Multi-device sync', included: true },
     ],
     cta: 'Upgrade to Ultra',
     ctaVariant: 'default',
@@ -183,14 +181,18 @@ export function PricingView() {
     if (!currentUser || !selectedPlan) return
     setIsProcessing(true)
     
-    if (selectedPlan.id === 'free') {
-      // Downgrading to free can be handled locally or via API
+if (selectedPlan.id === 'free') {
+      // Downgrades are processed server-side (RLS blocks client tier writes).
       try {
-        const { error } = await supabase
-          .from('profiles')
-          .update({ tier: 'free', trial_ends_at: null })
-          .eq('id', currentUser.id)
-        if (error) throw error
+        const { data: { session } } = await supabase.auth.getSession()
+        const token = session?.access_token
+        if (!token) throw new Error('Authentication required')
+
+        const res = await fetch('/api/account/downgrade', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        if (!res.ok) throw new Error('Failed to downgrade plan')
         setTier('free')
         toast.success('Successfully downgraded to Free plan')
         setBillingOpen(false)
@@ -460,9 +462,9 @@ export function PricingView() {
                       <p className="text-[10px] text-muted-foreground">Real-time</p>
                     </div>
                     <div>
-                      <Infinity className="w-5 h-5 mx-auto mb-1 text-muted-foreground" />
-                      <p className="text-xs font-semibold">Unlimited</p>
-                      <p className="text-[10px] text-muted-foreground">Storage</p>
+                      <Shield className="w-5 h-5 mx-auto mb-1 text-muted-foreground" />
+                      <p className="text-xs font-semibold">Encrypted</p>
+                      <p className="text-[10px] text-muted-foreground">Storage at rest</p>
                     </div>
                   </div>
                 </div>

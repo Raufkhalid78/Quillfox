@@ -5,10 +5,14 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useAppStore } from '@/stores/app-store'
 import { useVaultAutolock } from '@/hooks/use-vault-autolock'
 import { useGlobalRealtime } from '@/hooks/use-global-realtime'
+import { useDueReminders } from '@/hooks/use-due-reminders'
 import { VaultLockScreen } from '@/components/auth/vault-lock-screen'
 import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
 import { MobileNav } from '@/components/shared/mobile-nav'
+import { CommandPalette } from '@/components/shared/command-palette'
+import { OfflineBanner } from '@/components/shared/offline-banner'
+import { ServiceWorkerRegister } from '@/components/shared/service-worker-register'
 import { Loader2 } from 'lucide-react'
 import { useRouter, usePathname } from 'next/navigation'
 
@@ -28,6 +32,8 @@ export default function DashboardLayout({
   useVaultAutolock()
   // Global realtime syncing hook
   useGlobalRealtime()
+  // In-session due-date reminders
+  useDueReminders()
 
   // Sync profile details on mount or login
   const currentUserId = currentUser?.id
@@ -76,17 +82,27 @@ export default function DashboardLayout({
             mappedTier = 'ultra'
           }
 
+          // Anything that changes entitlement (e.g. trial expiry downgrade) must
+          // happen server-side. The client may only read its own tier here.
           if (data.trial_ends_at && mappedTier !== 'free') {
             const trialEndsAt = new Date(data.trial_ends_at).getTime()
             if (Date.now() > trialEndsAt) {
-              mappedTier = 'free'
-              const { error: updateErr } = await supabase
-                .from('profiles')
-                .update({ tier: 'free', trial_ends_at: null })
-                .eq('id', currentUserId)
-              
-              if (!updateErr) {
-                toast.error('Your free trial has expired. You have been reverted to the Free plan.')
+              try {
+                const { data: session } = await supabase.auth.getSession()
+                const token = session?.session?.access_token
+                if (token) {
+                  const res = await fetch('/api/account/reconcile-tier', {
+                    method: 'POST',
+                    headers: { Authorization: `Bearer ${token}` },
+                  })
+                  if (res.ok) {
+                    const result = await res.json()
+                    mappedTier = result.tier
+                    toast.error('Your free trial has expired. You have been reverted to the Free plan.')
+                  }
+                }
+              } catch (err) {
+                console.error('Tier reconciliation failed:', err)
               }
             }
           }
@@ -141,6 +157,8 @@ export default function DashboardLayout({
 
   return (
     <div className="min-h-screen flex flex-col bg-background text-foreground overflow-x-hidden noise-overlay">
+      <ServiceWorkerRegister />
+      <OfflineBanner />
       <main className="flex-1 flex flex-col h-screen overflow-hidden">
         <MobileNav />
         <div className="flex-1 overflow-hidden relative">
@@ -148,6 +166,7 @@ export default function DashboardLayout({
         </div>
       </main>
       {isVaultLocked && <VaultLockScreen />}
+      <CommandPalette />
     </div>
   )
 }

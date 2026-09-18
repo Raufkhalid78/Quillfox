@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useAppStore } from '@/stores/app-store'
 import { deriveKey, unwrapEncryptionKey, base64ToUint8Array } from '@/lib/e2ee'
 import { supabase } from '@/lib/supabase'
+import { getVaultLockoutUntil, registerVaultFailure, clearVaultFailures } from '@/lib/vault-lockout'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -35,9 +36,27 @@ export function VaultLockScreen() {
   // Rate limiting state
   const [failedAttempts, setFailedAttempts] = useState(0)
   const [lockoutUntil, setLockoutUntil] = useState<number | null>(null)
+  const [serverLockoutUntil, setServerLockoutUntil] = useState<number | null>(null)
+
+  // Effective lockout = the later of the local and server-enforced expiry.
+  const effectiveLockoutUntil =
+    lockoutUntil && serverLockoutUntil
+      ? Math.max(lockoutUntil, serverLockoutUntil)
+      : lockoutUntil ?? serverLockoutUntil
+
+  // Pull the persisted lockout so it survives reloads.
+  useEffect(() => {
+    let cancelled = false
+    getVaultLockoutUntil().then((until) => {
+      if (!cancelled && until) setServerLockoutUntil(until)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const handleKeypadPress = (num: string) => {
-    if (lockoutUntil && Date.now() < lockoutUntil) return
+    if (effectiveLockoutUntil && Date.now() < effectiveLockoutUntil) return
     if (passcode.length < 6) {
       setPasscode(prev => prev + num)
       setIsError(false)
@@ -56,8 +75,8 @@ export function VaultLockScreen() {
 
   const handlePasscodeSubmit = async () => {
     if (!currentUser || !encryptionSalt) return
-    if (lockoutUntil && Date.now() < lockoutUntil) {
-      const remainingSeconds = Math.ceil((lockoutUntil - Date.now()) / 1000)
+    if (effectiveLockoutUntil && Date.now() < effectiveLockoutUntil) {
+      const remainingSeconds = Math.ceil((effectiveLockoutUntil - Date.now()) / 1000)
       toast.error(`Too many attempts. Locked for ${remainingSeconds}s.`)
       setPasscode('')
       return
@@ -99,15 +118,20 @@ export function VaultLockScreen() {
       unlockVault()
       setPasscode('')
       setFailedAttempts(0)
+      setServerLockoutUntil(null)
+      clearVaultFailures()
       toast.success('Vault unlocked')
     } catch {
       setIsError(true)
       setPasscode('')
-      
+
       const newAttempts = failedAttempts + 1
       setFailedAttempts(newAttempts)
+      // Persist the failure server-side so the lockout survives reloads.
+      const serverUntil = await registerVaultFailure()
+      if (serverUntil) setServerLockoutUntil(serverUntil)
       if (newAttempts >= 5) {
-        setLockoutUntil(Date.now() + 60000) // Lock out for 1 minute
+        setLockoutUntil(Date.now() + 60000) // Local fallback: lock out for 1 minute
         toast.error('Too many failed attempts. Locked for 1 minute.')
       } else {
         toast.error(`Incorrect Passcode. ${5 - newAttempts} attempts remaining.`)
@@ -125,16 +149,17 @@ export function VaultLockScreen() {
 
   // Clear lockout when it expires
   useEffect(() => {
-    if (lockoutUntil) {
+    if (effectiveLockoutUntil) {
       const timer = setInterval(() => {
-        if (Date.now() >= lockoutUntil) {
+        if (Date.now() >= effectiveLockoutUntil) {
           setLockoutUntil(null)
+          setServerLockoutUntil(null)
           setFailedAttempts(0)
         }
       }, 1000)
       return () => clearInterval(timer)
     }
-  }, [lockoutUntil])
+  }, [effectiveLockoutUntil])
 
   // Keyboard support for passcode
   useEffect(() => {
@@ -155,7 +180,7 @@ export function VaultLockScreen() {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [unlockMethod, isVaultLocked, passcode, lockoutUntil])
+  }, [unlockMethod, isVaultLocked, passcode, effectiveLockoutUntil])
 
   const handlePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -175,6 +200,8 @@ export function VaultLockScreen() {
       if (error || !data.user) {
         toast.error('Incorrect password')
         setIsError(true)
+        const serverUntil = await registerVaultFailure()
+        if (serverUntil) setServerLockoutUntil(serverUntil)
         setIsLoading(false)
         return
       }
@@ -208,6 +235,8 @@ export function VaultLockScreen() {
       
       unlockVault()
       setFailedAttempts(0)
+      setServerLockoutUntil(null)
+      clearVaultFailures()
       toast.success('Vault unlocked')
     } catch {
       setIsError(true)
@@ -266,7 +295,7 @@ export function VaultLockScreen() {
                     variant="outline"
                     className="h-12 w-full text-lg font-semibold rounded-xl hover:bg-primary/10 hover:text-primary active:scale-95 transition-all"
                     onClick={() => handleKeypadPress(num)}
-                    disabled={isLoading || !!lockoutUntil}
+                    disabled={isLoading || !!effectiveLockoutUntil}
                   >
                     {num}
                   </Button>
@@ -275,7 +304,7 @@ export function VaultLockScreen() {
                   variant="ghost"
                   className="h-12 w-full text-xs font-semibold rounded-xl hover:bg-destructive/10 hover:text-destructive"
                   onClick={handleClear}
-                  disabled={isLoading || !!lockoutUntil}
+                  disabled={isLoading || !!effectiveLockoutUntil}
                 >
                   Clear
                 </Button>
@@ -283,7 +312,7 @@ export function VaultLockScreen() {
                   variant="outline"
                   className="h-12 w-full text-lg font-semibold rounded-xl hover:bg-primary/10 hover:text-primary active:scale-95 transition-all"
                   onClick={() => handleKeypadPress('0')}
-                  disabled={isLoading || !!lockoutUntil}
+                  disabled={isLoading || !!effectiveLockoutUntil}
                 >
                   0
                 </Button>
@@ -291,7 +320,7 @@ export function VaultLockScreen() {
                   variant="ghost"
                   className="h-12 w-full text-xs font-semibold rounded-xl hover:bg-primary/10 hover:text-primary"
                   onClick={handleBackspace}
-                  disabled={isLoading || !!lockoutUntil}
+                  disabled={isLoading || !!effectiveLockoutUntil}
                 >
                   Delete
                 </Button>

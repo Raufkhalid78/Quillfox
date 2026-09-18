@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useRef, useState, useEffect } from 'react'
-import { motion, useScroll, useTransform, useSpring, useMotionValue, useAnimationFrame } from 'framer-motion'
+import { motion, useScroll, useTransform, useSpring, useMotionValue, useReducedMotion } from 'framer-motion'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Shield, Users, Lock, ChevronRight, Zap, Sparkles, Apple, Play } from 'lucide-react'
@@ -73,6 +73,7 @@ function TiltCard({ children, className }: { children: React.ReactNode, classNam
 
 // --- Floating Particles Background ---
 function Particles() {
+  const shouldReduceMotion = useReducedMotion()
   const [particles, setParticles] = useState<{ id: number, x: number, y: number, size: number, speed: number }[]>([])
 
   useEffect(() => {
@@ -85,6 +86,8 @@ function Particles() {
     }))
     setParticles(arr)
   }, [])
+
+  if (shouldReduceMotion) return null
 
   return (
     <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-40">
@@ -114,6 +117,7 @@ export function LandingPage() {
   const router = useRouter()
   const currentUser = useAppStore(s => s.currentUser)
   const { scrollY } = useScroll()
+  const shouldReduceMotion = useReducedMotion()
 
   useEffect(() => {
     if (currentUser) {
@@ -121,10 +125,11 @@ export function LandingPage() {
     }
   }, [currentUser, router])
   
-  // Parallax effects
-  const y1 = useTransform(scrollY, [0, 1000], [0, 200])
-  const y2 = useTransform(scrollY, [0, 1000], [0, -200])
-  const opacity = useTransform(scrollY, [0, 300], [1, 0])
+  // Parallax effects (disabled when the user prefers reduced motion)
+  const y1Raw = useTransform(scrollY, [0, 1000], [0, 200])
+  const opacityRaw = useTransform(scrollY, [0, 300], [1, 0])
+  const y1 = shouldReduceMotion ? 0 : y1Raw
+  const opacity = shouldReduceMotion ? 1 : opacityRaw
 
   return (
     <div className="min-h-screen bg-[#050505] text-white selection:bg-primary/30 font-sans overflow-hidden">
@@ -430,7 +435,7 @@ export function LandingPage() {
                 <li>3 Active Devices</li>
                 <li>15 Collaborators</li>
                 <li>Unlimited attachments</li>
-                <li>Priority features</li>
+                <li>Priority support</li>
               </ul>
               <Button onClick={() => router.push('/auth')} className="w-full rounded-full bg-emerald-500 hover:bg-emerald-400 text-black font-bold">Start Free Trial</Button>
             </motion.div>
@@ -447,7 +452,7 @@ export function LandingPage() {
                 <li>5 Active Devices</li>
                 <li>35 Collaborators</li>
                 <li>Priority Support</li>
-                <li>Custom Themes</li>
+                <li>Extra collaborator seats</li>
               </ul>
               <Button variant="outline" className="w-full rounded-full border-violet-500/30 hover:bg-violet-500/10 text-violet-300">Upgrade to Ultra</Button>
             </motion.div>

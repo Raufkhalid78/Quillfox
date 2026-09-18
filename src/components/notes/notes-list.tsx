@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import { useAppStore } from '@/stores/app-store'
-import { encryptNoteTitle, decryptNoteTitleWithStatus, decryptNoteContentWithStatus } from '@/lib/encrypted-api'
+import { encryptNoteTitle, decryptNoteTitleWithStatus, decryptNoteContentWithStatus, encryptNoteContent } from '@/lib/encrypted-api'
 import { supabase } from '@/lib/supabase'
 import { logActivity } from '@/lib/activity'
 import { Virtuoso } from 'react-virtuoso'
@@ -16,10 +16,15 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { toast } from 'sonner'
-import { Plus, FileText, Clock, ShieldCheck, PenLine, LogOut, Sun, Moon, StickyNote, Search, Loader2, CalendarDays } from 'lucide-react'
+import { Plus, FileText, Clock, ShieldCheck, PenLine, LogOut, Sun, Moon, StickyNote, Search, Loader2, CalendarDays, Archive, Pin, Trash2, X, CheckCircle2, Circle } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { formatDistanceToNow, format } from 'date-fns'
 import { getDueDateColor } from '@/lib/utils'
+import { getPlanLimits, isAtLimit, formatLimit } from '@/lib/plans'
+import { TagManagerDialog } from '@/components/notes/tag-manager-dialog'
+import { getAllTemplates } from '@/lib/templates'
+
+const PAGE_SIZE = 30
 
 const stagger = {
   hidden: {},
@@ -45,6 +50,8 @@ export function NotesList() {
   const router = useRouter()
 
   const [isLoading, setIsLoading] = useState(true)
+  const [hasMore, setHasMore] = useState(false)
+  const [isFetchingMore, setIsFetchingMore] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
   const [newTitle, setNewTitle] = useState('')
   const [newWorkspace, setNewWorkspace] = useState<string>('')
@@ -52,6 +59,26 @@ export function NotesList() {
   const [searchQuery, setSearchQuery] = useState('')
   const { theme, setTheme } = useTheme()
   const contentRef = useRef<HTMLDivElement>(null)
+
+  const [selectionMode, setSelectionMode] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [selectedTag, setSelectedTag] = useState<string | null>(null)
+  const [tagManagerOpen, setTagManagerOpen] = useState(false)
+  const [templateId, setTemplateId] = useState('')
+
+  const toggleSelected = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const exitSelection = () => {
+    setSelectionMode(false)
+    setSelectedIds(new Set())
+  }
 
   const [decryptedNotes, setDecryptedNotes] = useState<Map<string, { title: string; preview: string; updatedAt: string }>>(new Map())
   const decryptedNotesRef = useRef<Map<string, { title: string; preview: string; updatedAt: string }>>(new Map())
@@ -64,7 +91,9 @@ export function NotesList() {
         .from('notes')
         .select('*')
         .eq('is_archived', false)
+        .is('deleted_at', null)
         .order('updated_at', { ascending: false })
+        .range(0, PAGE_SIZE - 1)
 
       if (error) {
         toast.error('Failed to load notes')
@@ -85,10 +114,44 @@ export function NotesList() {
       }))
 
       setNotes(formatted)
+      setHasMore(formatted.length === PAGE_SIZE)
     } catch {
       toast.error('Failed to load notes')
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  const loadMore = async () => {
+    if (isFetchingMore || !hasMore || !currentUser) return
+    setIsFetchingMore(true)
+    try {
+      const from = useAppStore.getState().notes.length
+      const { data, error } = await supabase
+        .from('notes')
+        .select('*')
+        .eq('is_archived', false)
+        .is('deleted_at', null)
+        .order('updated_at', { ascending: false })
+        .range(from, from + PAGE_SIZE - 1)
+
+      if (error) return
+      const formatted = data.map((n: any) => ({
+        id: n.id,
+        title: n.title,
+        content: n.content,
+        tags: n.tags || [],
+        workspaceId: n.workspace_id,
+        authorId: n.author_id,
+        isPinned: n.is_pinned,
+        isArchived: n.is_archived,
+        createdAt: n.created_at,
+        updatedAt: n.updated_at, lockedBy: n.locked_by || null, lockedAt: n.locked_at || null,
+      }))
+      setNotes([...useAppStore.getState().notes, ...formatted])
+      setHasMore(formatted.length === PAGE_SIZE)
+    } finally {
+      setIsFetchingMore(false)
     }
   }
 
@@ -149,25 +212,29 @@ export function NotesList() {
 
   const handleCreate = async () => {
     if (!currentUser || isCreating) return
-    setIsCreating(true)
 
-    // Enforce Free tier notes limit (10 notes max)
+    // Enforce notes limit for the user's plan
+    const limits = getPlanLimits(userTier)
     const ownedNotesCount = notes.filter((n) => n.authorId === currentUser.id && !n.isArchived).length
-    if (userTier === 'free' && ownedNotesCount >= 10) {
-      toast.error('Free tier is limited to 10 notes. Please upgrade to Premium or Ultra Premium!')
+    if (isAtLimit(ownedNotesCount, limits.notes)) {
+      toast.error(`Your plan allows up to ${formatLimit(limits.notes)} notes. Please upgrade to add more.`)
       return
     }
 
-    const plainTitle = newTitle.trim() || 'Untitled Note'
+    setIsCreating(true)
+
+    const template = getAllTemplates().find((t) => t.id === templateId && t.type === 'note')
+    const plainTitle = newTitle.trim() || template?.name || 'Untitled Note'
     const noteId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2)
     try {
       const encryptedTitle = await encryptNoteTitle(plainTitle, newWorkspace || null)
+      const encryptedContent = await encryptNoteContent(template?.content || '', newWorkspace || null)
       const { data: note, error } = await supabase
         .from('notes')
         .insert({
           id: noteId,
           title: encryptedTitle,
-          content: '',
+          content: encryptedContent,
           workspace_id: newWorkspace || null,
           author_id: currentUser.id,
         })
@@ -198,6 +265,7 @@ export function NotesList() {
       setCreateOpen(false)
       setNewTitle('')
       setNewWorkspace('')
+      setTemplateId('')
       router.push(`/dashboard/notes/${formatted.id}`)
       toast.success('Note created')
     } catch {
@@ -205,6 +273,48 @@ export function NotesList() {
     } finally {
       setIsCreating(false)
     }
+  }
+
+  const handleBulkArchive = async () => {
+    const ids = [...selectedIds]
+    if (ids.length === 0) return
+    const { error } = await supabase.from('notes').update({ is_archived: true }).in('id', ids)
+    if (error) {
+      toast.error('Bulk archive failed')
+      return
+    }
+    setNotes(notes.map((n) => (selectedIds.has(n.id) ? { ...n, isArchived: true } : n)))
+    toast.success(`Archived ${ids.length} note${ids.length === 1 ? '' : 's'}`)
+    exitSelection()
+  }
+
+  const handleBulkPin = async () => {
+    const ids = [...selectedIds]
+    if (ids.length === 0) return
+    const { error } = await supabase.from('notes').update({ is_pinned: true }).in('id', ids)
+    if (error) {
+      toast.error('Bulk pin failed')
+      return
+    }
+    setNotes(notes.map((n) => (selectedIds.has(n.id) ? { ...n, isPinned: true } : n)))
+    toast.success(`Pinned ${ids.length} note${ids.length === 1 ? '' : 's'}`)
+    exitSelection()
+  }
+
+  const handleBulkTrash = async () => {
+    const ids = [...selectedIds]
+    if (ids.length === 0) return
+    const { error } = await supabase
+      .from('notes')
+      .update({ deleted_at: new Date().toISOString() })
+      .in('id', ids)
+    if (error) {
+      toast.error('Bulk delete failed')
+      return
+    }
+    setNotes(notes.filter((n) => !selectedIds.has(n.id)))
+    toast.success(`Moved ${ids.length} note${ids.length === 1 ? '' : 's'} to trash`)
+    exitSelection()
   }
 
   const activeNotes = notes
@@ -215,12 +325,18 @@ export function NotesList() {
       return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
     })
 
-  const filteredNotes = searchQuery
-    ? activeNotes.filter((n) => {
-        const decrypted = decryptedNotes.get(n.id)
-        return decrypted?.title.toLowerCase().includes(searchQuery.toLowerCase())
-      })
-    : activeNotes
+  const availableTags = Array.from(
+    new Set(activeNotes.flatMap((n) => n.tags || []))
+  ).sort()
+
+  const filteredNotes = activeNotes.filter((n) => {
+    if (selectedTag && !(n.tags || []).includes(selectedTag)) return false
+    if (searchQuery) {
+      const decrypted = decryptedNotes.get(n.id)
+      return decrypted?.title.toLowerCase().includes(searchQuery.toLowerCase()) ?? false
+    }
+    return true
+  })
 
   if (!currentUser) return null
 
@@ -269,6 +385,15 @@ export function NotesList() {
               {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </Button>
             <Button
+              variant="ghost"
+              size="sm"
+              className="gap-1.5 text-xs h-8"
+              onClick={() => (selectionMode ? exitSelection() : setSelectionMode(true))}
+            >
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">{selectionMode ? 'Cancel' : 'Select'}</span>
+            </Button>
+            <Button
               size="sm"
               className="gap-1.5 btn-gradient btn-shine text-white rounded-lg text-xs h-8"
               onClick={() => setCreateOpen(true)}
@@ -285,6 +410,43 @@ export function NotesList() {
         {/* Content */}
         <main className="flex-1 overflow-y-auto" ref={contentRef}>
           <div className="max-w-4xl mx-auto px-4 md:px-8 py-6 md:py-8">
+            {availableTags.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5 mb-4">
+                <button
+                  type="button"
+                  onClick={() => setSelectedTag(null)}
+                  className={`text-[11px] rounded-full px-2.5 py-1 border transition-colors ${
+                    selectedTag === null
+                      ? 'bg-[#059669]/15 text-[#059669] border-[#059669]/30 font-medium'
+                      : 'bg-muted/40 text-muted-foreground border-border/50 hover:text-foreground'
+                  }`}
+                >
+                  All
+                </button>
+                {availableTags.map((tag) => (
+                  <button
+                    key={tag}
+                    type="button"
+                    onClick={() => setSelectedTag(selectedTag === tag ? null : tag)}
+                    className={`text-[11px] rounded-full px-2.5 py-1 border transition-colors ${
+                      selectedTag === tag
+                        ? 'bg-[#059669]/15 text-[#059669] border-[#059669]/30 font-medium'
+                        : 'bg-muted/40 text-muted-foreground border-border/50 hover:text-foreground'
+                    }`}
+                  >
+                    #{tag}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setTagManagerOpen(true)}
+                  aria-label="Manage tags"
+                  className="text-[11px] rounded-full px-2 py-1 border border-border/50 text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Manage
+                </button>
+              </div>
+            )}
             {isLoading ? (
               <div className="space-y-3">
                 {Array.from({ length: 6 }).map((_, i) => (
@@ -320,16 +482,36 @@ export function NotesList() {
                 <Virtuoso
                   style={{ height: '100%' }}
                   data={filteredNotes}
+                  endReached={() => {
+                    if (!searchQuery) loadMore()
+                  }}
                   itemContent={(index, note) => {
                     const decrypted = decryptedNotes.get(note.id)
                     const ws = workspaces.find((w) => w.id === note.workspaceId)
                     return (
                       <div className="pb-2">
                         <button
-                          onClick={() => router.push(`/dashboard/notes/${note.id}`)}
-                          className="w-full text-left rounded-xl glass-card card-lift inner-glow p-4 group"
+                          onClick={() => {
+                            if (selectionMode) {
+                              toggleSelected(note.id)
+                              return
+                            }
+                            router.push(`/dashboard/notes/${note.id}`)
+                          }}
+                          className={`w-full text-left rounded-xl glass-card card-lift inner-glow p-4 group ${
+                            selectionMode && selectedIds.has(note.id) ? 'ring-2 ring-[#059669]/50' : ''
+                          }`}
                         >
                           <div className="flex items-start gap-3">
+                            {selectionMode && (
+                              <div className="mt-0.5 shrink-0">
+                                {selectedIds.has(note.id) ? (
+                                  <CheckCircle2 className="w-5 h-5 text-[#059669]" />
+                                ) : (
+                                  <Circle className="w-5 h-5 text-muted-foreground/50" />
+                                )}
+                              </div>
+                            )}
                             <div className="mt-0.5 w-9 h-9 rounded-lg bg-[#059669]/8 dark:bg-[#059669]/15 flex items-center justify-center shrink-0">
                               <FileText className="w-4 h-4 text-[#059669]/70 dark:text-[#34d399]/70" />
                             </div>
@@ -372,6 +554,43 @@ export function NotesList() {
         </main>
       </div>
 
+      {selectionMode && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-1.5 rounded-full border border-border bg-popover px-3 py-2 shadow-xl">
+          <span className="text-xs font-medium px-1 whitespace-nowrap">{selectedIds.size} selected</span>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-xs h-7"
+            onClick={() => setSelectedIds(new Set(filteredNotes.map((n) => n.id)))}
+          >
+            Select all
+          </Button>
+          <Button variant="ghost" size="sm" className="gap-1 text-xs h-7" onClick={handleBulkArchive} disabled={selectedIds.size === 0}>
+            <Archive className="w-3.5 h-3.5" />
+            Archive
+          </Button>
+          <Button variant="ghost" size="sm" className="gap-1 text-xs h-7" onClick={handleBulkPin} disabled={selectedIds.size === 0}>
+            <Pin className="w-3.5 h-3.5" />
+            Pin
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="gap-1 text-xs h-7 text-destructive hover:text-destructive"
+            onClick={handleBulkTrash}
+            disabled={selectedIds.size === 0}
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            Trash
+          </Button>
+          <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Exit selection" onClick={exitSelection}>
+            <X className="w-4 h-4" />
+          </Button>
+        </div>
+      )}
+
+      <TagManagerDialog open={tagManagerOpen} onOpenChange={setTagManagerOpen} tags={availableTags} />
+
       {/* Create Note Dialog */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="sm:max-w-md">
@@ -407,6 +626,28 @@ export function NotesList() {
                 </Select>
               </div>
             )}
+            {(() => {
+              const noteTemplates = getAllTemplates().filter((t) => t.type === 'note')
+              if (noteTemplates.length === 0) return null
+              return (
+                <div className="space-y-1.5">
+                  <p className="text-xs text-muted-foreground">Start from a template (optional)</p>
+                  <Select value={templateId || '__none__'} onValueChange={(v) => setTemplateId(v === '__none__' ? '' : v)}>
+                    <SelectTrigger className="w-full h-9 text-xs rounded-lg">
+                      <SelectValue placeholder="Blank note" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">Blank note</SelectItem>
+                      {noteTemplates.map((t) => (
+                        <SelectItem key={t.id} value={t.id}>
+                          {t.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )
+            })()}
             <Button className="w-full btn-gradient btn-shine text-white rounded-lg" onClick={handleCreate} disabled={isCreating}>
               {isCreating ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
               {isCreating ? 'Creating...' : 'Create Note'}

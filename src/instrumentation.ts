@@ -1,17 +1,17 @@
-import * as Sentry from '@sentry/nextjs';
+import * as Sentry from '@sentry/nextjs'
 
-export function register() {
+export async function register() {
   if (process.env.NEXT_RUNTIME === 'nodejs') {
-    Sentry.init({
-      dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
-      tracesSampleRate: 1.0,
-    });
+    await import('../sentry.server.config')
   }
 
   if (process.env.NEXT_RUNTIME === 'edge') {
-    Sentry.init({
-      dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
-      tracesSampleRate: 1.0,
-    });
+    await import('../sentry.edge.config')
   }
 }
+
+/**
+ * Captures errors from React Server Components, route handlers and middleware.
+ * Sentry v10 convention.
+ */
+export const onRequestError = Sentry.captureRequestError

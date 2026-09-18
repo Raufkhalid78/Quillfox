@@ -1,140 +1,168 @@
 import { supabase } from './supabase'
-import { generateMasterKey, exportKeyToString, encryptWithPublicKey, encrypt } from './e2ee'
-import { decryptNoteContentWithStatus } from './encrypted-api'
+import {
+  generateMasterKey,
+  exportKeyToString,
+  encryptWithPublicKey,
+  encrypt,
+  decrypt,
+  isEncrypted,
+} from './e2ee'
 import { useAppStore } from '@/stores/app-store'
 
-export async function rotateWorkspaceEncryptionKey(workspaceId: string) {
-  try {
-    // 1. Fetch remaining members of the workspace
-    const { data: members, error: membersError } = await supabase
-      .from('workspace_members')
-      .select('user_id')
-      .eq('workspace_id', workspaceId)
-    
-    if (membersError || !members) throw new Error('Failed to fetch remaining workspace members')
+interface MemberKeyPayload {
+  user_id: string
+  encrypted_workspace_key: string
+}
 
-    // 2. Fetch their public keys
-    const userIds = members.map(m => m.user_id)
-    const { data: publicKeys, error: keysError } = await supabase
-      .from('public_keys')
-      .select('id, public_key')
-      .in('id', userIds)
-    
-    if (keysError || !publicKeys) throw new Error('Failed to fetch members public keys')
+interface ContentPayload {
+  id: string
+  title: string
+  content?: string
+}
 
-    // 3. Generate a new AES-GCM master key for the workspace
-    const newWorkspaceKey = await generateMasterKey()
-    const newWorkspaceKeyStr = await exportKeyToString(newWorkspaceKey)
+/**
+ * Re-encrypt securely-produces a plaintext using the new workspace key.
+ * Encrypted values are decrypted with the old key first; a value that is not
+ * encrypted (legacy plaintext) is passed through unchanged.
+ */
+async function reEncrypt(
+  value: string | null,
+  oldKey: CryptoKey,
+  newKey: CryptoKey
+): Promise<string | null> {
+  if (!value) return value
+  if (!isEncrypted(value)) return encrypt(value, newKey)
 
-    // 4. Encrypt the new workspace key for each remaining member using their RSA public key
-    const newWorkspaceKeys = await Promise.all(
-      publicKeys.map(async (pk) => {
-        const encryptedWorkspaceKey = await encryptWithPublicKey(newWorkspaceKeyStr, pk.public_key)
+  const plaintext = await decrypt(value, oldKey)
+  return encrypt(plaintext, newKey)
+}
+
+/**
+ * Rotates a workspace's symmetric key after a member is removed.
+ *
+ * All wrapped member keys and re-encrypted content are written by a single
+ * Postgres function (`rotate_workspace_keys`) in one transaction, so a partial
+ * failure can never leave the workspace with mismatched keys or unreadable
+ * notes. Data is read from the database (not the local store) so records are
+ * never missed. If any value cannot be decrypted with the old key the rotation
+ * aborts before writing anything.
+ */
+export async function rotateWorkspaceEncryptionKey(workspaceId: string): Promise<boolean> {
+  // 0. The old key must be available in memory to decrypt existing content.
+  const oldKey = useAppStore.getState().workspaceKeys[workspaceId]
+  if (!oldKey) {
+    throw new Error('Cannot rotate workspace key: the current workspace key is not loaded.')
+  }
+
+  // 1. Remaining members of the workspace.
+  const { data: members, error: membersError } = await supabase
+    .from('workspace_members')
+    .select('user_id')
+    .eq('workspace_id', workspaceId)
+
+  if (membersError) throw new Error(`Failed to fetch workspace members: ${membersError.message}`)
+  if (!members || members.length === 0) {
+    throw new Error('Cannot rotate keys: workspace has no members')
+  }
+
+  // 2. Their RSA public keys (stored on profiles).
+  const userIds = members.map((m) => m.user_id)
+  const { data: profiles, error: keysError } = await supabase
+    .from('profiles')
+    .select('id, public_rsa_key')
+    .in('id', userIds)
+
+  if (keysError) throw new Error(`Failed to fetch member public keys: ${keysError.message}`)
+
+  const publicKeyById = new Map<string, string>()
+  for (const p of (profiles ?? []) as { id: string; public_rsa_key: string | null }[]) {
+    if (p.public_rsa_key) publicKeyById.set(p.id, p.public_rsa_key)
+  }
+
+  // 3. Generate the new workspace key and wrap it for every member with a key.
+  const newWorkspaceKey = await generateMasterKey()
+  const newWorkspaceKeyStr = await exportKeyToString(newWorkspaceKey)
+
+  const memberKeyPayloads = (
+    await Promise.all(
+      userIds.map(async (userId): Promise<MemberKeyPayload | null> => {
+        const publicKey = publicKeyById.get(userId)
+        if (!publicKey) return null // member has no RSA key yet; cannot be granted access
         return {
-          workspace_id: workspaceId,
-          user_id: pk.id,
-          encrypted_workspace_key: encryptedWorkspaceKey,
-          workspace_public_key: pk.public_key // Not used anymore but required by schema if it exists? Wait, the schema has 'workspace_public_key' for workspace_keys? Let me check.
+          user_id: userId,
+          encrypted_workspace_key: await encryptWithPublicKey(newWorkspaceKeyStr, publicKey),
         }
       })
     )
+  ).filter((x): x is MemberKeyPayload => x !== null)
 
-    // 5. Fetch all notes and todos for this workspace BEFORE changing the key
-    const store = useAppStore.getState()
-    const oldNotes = store.notes.filter(n => n.workspaceId === workspaceId)
-    const oldTodos = store.todoLists.filter(t => t.workspaceId === workspaceId)
-
-    // 6. Decrypt and re-encrypt all notes with the NEW key
-    const updatedNotes: any[] = []
-    for (const note of oldNotes) {
-      const { content: decTitle } = await decryptNoteContentWithStatus(note.title, workspaceId)
-      const { content: decContent } = await decryptNoteContentWithStatus(note.content, workspaceId)
-      
-      const newEncTitle = await encrypt(decTitle, newWorkspaceKey)
-      const newEncContent = await encrypt(decContent, newWorkspaceKey)
-      
-      updatedNotes.push({
-        id: note.id,
-        title: newEncTitle,
-        content: newEncContent,
-        updated_at: new Date().toISOString(),
-        workspace_id: note.workspaceId,
-        author_id: note.authorId,
-        is_pinned: note.isPinned,
-        is_archived: note.isArchived,
-        folder_id: note.folderId,
-        tags: note.tags,
-        locked_by: note.lockedBy
-      })
-    }
-
-    // 7. Decrypt and re-encrypt all todos with the NEW key
-    const updatedTodos: any[] = []
-    const updatedTodoItems: any[] = []
-    for (const todo of oldTodos) {
-      const { content: decTitle } = await decryptNoteContentWithStatus(todo.title, workspaceId)
-      const newEncTitle = await encrypt(decTitle, newWorkspaceKey)
-      
-      updatedTodos.push({
-        id: todo.id,
-        title: newEncTitle,
-        updated_at: new Date().toISOString(),
-        workspace_id: todo.workspaceId,
-        author_id: todo.authorId,
-        is_pinned: todo.isPinned,
-        is_archived: todo.isArchived,
-        folder_id: todo.folderId
-      })
-
-      for (const item of todo.items) {
-        const { content: decItemText } = await decryptNoteContentWithStatus(item.title, workspaceId)
-        const newEncItemText = await encrypt(decItemText, newWorkspaceKey)
-        
-        updatedTodoItems.push({
-          id: item.id,
-          todo_list_id: todo.id,
-          title: newEncItemText,
-          is_completed: item.completed,
-          order: item.order,
-          updated_at: new Date().toISOString()
-        })
-      }
-    }
-
-    // 8. Execute a massive transaction to update keys and re-encrypted data
-    // First, delete old workspace keys
-    await supabase.from('workspace_keys').delete().eq('workspace_id', workspaceId)
-    
-    // Insert new workspace keys
-    const { error: insertKeysError } = await supabase.from('workspace_keys').insert(
-      newWorkspaceKeys.map(k => ({
-        workspace_id: k.workspace_id,
-        user_id: k.user_id,
-        encrypted_workspace_key: k.encrypted_workspace_key
-      }))
-    )
-    if (insertKeysError) throw insertKeysError
-
-    // Upsert re-encrypted notes
-    if (updatedNotes.length > 0) {
-      const { error: updateNotesError } = await supabase.from('notes').upsert(updatedNotes)
-      if (updateNotesError) throw updateNotesError
-    }
-
-    // Upsert re-encrypted todos
-    if (updatedTodos.length > 0) {
-      const { error: updateTodosError } = await supabase.from('todo_lists').upsert(updatedTodos)
-      if (updateTodosError) throw updateTodosError
-    }
-
-    if (updatedTodoItems.length > 0) {
-      const { error: updateItemsError } = await supabase.from('todo_items').upsert(updatedTodoItems)
-      if (updateItemsError) throw updateItemsError
-    }
-
-    return true
-  } catch (err) {
-    console.error("Failed to rotate workspace keys:", err)
-    throw err
+  if (memberKeyPayloads.length === 0) {
+    throw new Error('Cannot rotate keys: no members have a public key configured')
   }
+
+  // 4. Fetch content from the database (source of truth).
+  const { data: notes, error: notesError } = await supabase
+    .from('notes')
+    .select('id, title, content')
+    .eq('workspace_id', workspaceId)
+  if (notesError) throw new Error(`Failed to fetch notes: ${notesError.message}`)
+
+  const { data: todos, error: todosError } = await supabase
+    .from('todo_lists')
+    .select('id, title')
+    .eq('workspace_id', workspaceId)
+  if (todosError) throw new Error(`Failed to fetch todo lists: ${todosError.message}`)
+
+  const todoIds = (todos ?? []).map((t) => t.id)
+  let items: { id: string; title: string }[] = []
+  if (todoIds.length > 0) {
+    const { data: itemRows, error: itemsError } = await supabase
+      .from('todo_items')
+      .select('id, title')
+      .in('todo_list_id', todoIds)
+    if (itemsError) throw new Error(`Failed to fetch todo items: ${itemsError.message}`)
+    items = itemRows ?? []
+  }
+
+  // 5. Decrypt + re-encrypt everything. Any failure aborts before we write.
+  const notePayloads = await Promise.all(
+    (notes ?? []).map(async (n): Promise<ContentPayload> => ({
+      id: n.id,
+      title: (await reEncrypt(n.title, oldKey, newWorkspaceKey)) as string,
+      content: (await reEncrypt(n.content, oldKey, newWorkspaceKey)) as string,
+    }))
+  )
+
+  const todoPayloads = await Promise.all(
+    (todos ?? []).map(async (t): Promise<ContentPayload> => ({
+      id: t.id,
+      title: (await reEncrypt(t.title, oldKey, newWorkspaceKey)) as string,
+    }))
+  )
+
+  const itemPayloads = await Promise.all(
+    items.map(async (i): Promise<ContentPayload> => ({
+      id: i.id,
+      title: (await reEncrypt(i.title, oldKey, newWorkspaceKey)) as string,
+    }))
+  )
+
+  // 6. Commit all changes atomically.
+  const { error: rpcError } = await supabase.rpc('rotate_workspace_keys', {
+    p_workspace_id: workspaceId,
+    p_member_keys: memberKeyPayloads,
+    p_notes: notePayloads,
+    p_todos: todoPayloads,
+    p_items: itemPayloads,
+  })
+
+  if (rpcError) {
+    throw new Error(`Failed to rotate workspace keys: ${rpcError.message}`)
+  }
+
+  // 7. Only after a successful commit, swap the in-memory key.
+  const currentKeys = useAppStore.getState().workspaceKeys
+  useAppStore.getState().setWorkspaceKeys({ ...currentKeys, [workspaceId]: newWorkspaceKey })
+
+  return true
 }

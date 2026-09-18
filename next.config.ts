@@ -4,13 +4,15 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   output: "standalone",
   reactStrictMode: true,
+  poweredByHeader: false,
   async headers() {
     return [
       {
-        // Apply these headers to all routes in your application.
+        // Baseline security headers for routes not covered by middleware
+        // (e.g. /api/*). The Content-Security-Policy is set dynamically in
+        // src/middleware.ts for page routes.
         source: '/(.*)',
         headers: [
-          // Content-Security-Policy is handled dynamically by src/middleware.ts for nonce generation
           {
             key: 'X-Content-Type-Options',
             value: 'nosniff',
@@ -27,6 +29,10 @@ const nextConfig: NextConfig = {
             key: 'Referrer-Policy',
             value: 'strict-origin-when-cross-origin',
           },
+          {
+            key: 'Permissions-Policy',
+            value: 'camera=(), microphone=(), geolocation=()',
+          },
         ],
       },
     ]
@@ -34,7 +40,20 @@ const nextConfig: NextConfig = {
 };
 
 export default withSentryConfig(nextConfig, {
-  org: "quillfox",
-  project: "javascript-nextjs",
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+  // Suppress logs outside CI.
   silent: !process.env.CI,
+  // Upload a wider set of client bundles so stack traces resolve.
+  widenClientFileUpload: true,
+  // Discard Sentry webpack plugin source maps after upload.
+  sourcemaps: {
+    deleteSourcemapsAfterUpload: true,
+  },
+  webpack: {
+    treeshake: {
+      removeDebugLogging: true,
+    },
+  },
 });

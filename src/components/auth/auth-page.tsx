@@ -54,6 +54,18 @@ const cardVariants = {
   },
 }
 
+/**
+ * Resolve where to send the user after authentication. Honors the `?redirect=`
+ * param set by the middleware, but only for internal paths (prevents open
+ * redirects).
+ */
+function getPostAuthPath(): string {
+  if (typeof window === 'undefined') return '/dashboard'
+  const redirect = new URLSearchParams(window.location.search).get('redirect')
+  if (redirect && redirect.startsWith('/') && !redirect.startsWith('//')) return redirect
+  return '/dashboard'
+}
+
 export function AuthPage() {
   const [activeTab, setActiveTab] = useState<'login' | 'register'>('login')
   const [isLoading, setIsLoading] = useState(false)
@@ -86,7 +98,7 @@ export function AuthPage() {
 
   useEffect(() => {
     if (currentUser) {
-      router.push('/dashboard')
+      router.push(getPostAuthPath())
     }
   }, [currentUser, router])
 
@@ -181,7 +193,7 @@ export function AuthPage() {
       }
 
       toast.success('Welcome back!')
-      router.push('/dashboard')
+      router.push(getPostAuthPath())
     } catch {
       toast.error('Network error. Please try again.')
     } finally {
@@ -388,7 +400,7 @@ export function AuthPage() {
     const { data: { session } } = await supabase.auth.getSession()
     if (session) {
       toast.success('Registration completed!')
-      router.push('/dashboard')
+      router.push(getPostAuthPath())
     } else {
       toast.success('Registration successful! Please check your email to verify your account.')
       setActiveTab('login')
@@ -411,7 +423,7 @@ export function AuthPage() {
                 <Lock className="w-6 h-6 text-purple-500" /> Save Your Recovery Key
               </h2>
               <p className="text-sm text-muted-foreground mb-6">
-                Because your notes are end-to-end encrypted, Quillo cannot reset your password without losing your data. 
+                Because your notes are end-to-end encrypted, QuillFox cannot reset your password without losing your data. 
                 <strong className="text-foreground"> Write down this Recovery Key.</strong> It is the ONLY way to recover your notes if you forget your password.
               </p>
               <div className="bg-muted p-4 rounded-xl flex items-center justify-between mb-6 border font-mono text-lg text-foreground text-center">
@@ -549,6 +561,7 @@ export function AuthPage() {
                         <Input
                           id="recovery-password"
                           type={showRecoveryPassword ? 'text' : 'password'}
+                          autoComplete="new-password"
                           value={recoveryPassword}
                           onChange={(e) => setRecoveryPassword(e.target.value)}
                           placeholder="At least 6 characters"
@@ -720,6 +733,7 @@ export function AuthPage() {
                             <Input
                               id="login-email"
                               type="email"
+                              autoComplete="email"
                               placeholder="you@example.com"
                               value={loginEmail}
                               onChange={(e) => setLoginEmail(e.target.value)}
@@ -735,6 +749,7 @@ export function AuthPage() {
                             <Input
                               id="login-password"
                               type={showLoginPassword ? 'text' : 'password'}
+                              autoComplete="current-password"
                               placeholder="Enter your password"
                               value={loginPassword}
                               onChange={(e) => setLoginPassword(e.target.value)}
@@ -809,6 +824,7 @@ export function AuthPage() {
                             <Input
                               id="register-name"
                               type="text"
+                              autoComplete="name"
                               placeholder="Your name"
                               value={registerName}
                               onChange={(e) => setRegisterName(e.target.value)}
@@ -823,6 +839,7 @@ export function AuthPage() {
                             <Input
                               id="register-email"
                               type="email"
+                              autoComplete="email"
                               placeholder="you@example.com"
                               value={registerEmail}
                               onChange={(e) => setRegisterEmail(e.target.value)}
@@ -837,6 +854,7 @@ export function AuthPage() {
                             <Input
                               id="register-password"
                               type={showRegisterPassword ? 'text' : 'password'}
+                              autoComplete="new-password"
                               placeholder="Min. 6 characters"
                               value={registerPassword}
                               onChange={(e) => setRegisterPassword(e.target.value)}

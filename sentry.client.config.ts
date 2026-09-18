@@ -1,19 +1,12 @@
-import * as Sentry from '@sentry/nextjs';
+import * as Sentry from '@sentry/nextjs'
+import { sentryCommonOptions } from '@/lib/sentry-options'
 
 Sentry.init({
-  dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
-  // Replay may only be enabled for the client-side
+  ...sentryCommonOptions,
   integrations: [
+    // Replay is client-only. Keep session sampling low; capture all error sessions.
     Sentry.replayIntegration(),
   ],
-
-  // Set tracesSampleRate to 1.0 to capture 100%
-  // of transactions for performance monitoring.
-  // We recommend adjusting this value in production
-  tracesSampleRate: 1.0,
-
-  // Capture Replay for 10% of all sessions,
-  // plus for 100% of sessions with an error
-  replaysSessionSampleRate: 0.1,
+  replaysSessionSampleRate: 0.05,
   replaysOnErrorSampleRate: 1.0,
-});
+})

@@ -2,13 +2,26 @@
 
 import { useEffect, useState, useMemo, useRef } from 'react'
 import { useEditor, EditorContent } from '@tiptap/react'
+import { BubbleMenu } from '@tiptap/react/menus'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
 import Collaboration from '@tiptap/extension-collaboration'
 import CollaborationCursor from '@tiptap/extension-collaboration-cursor'
 import { Markdown } from 'tiptap-markdown'
+import { SlashCommand } from '@/components/note/slash-command'
 import { useAppStore } from '@/stores/app-store'
-import { Sparkles } from 'lucide-react'
+import {
+  Bold,
+  Italic,
+  Strikethrough,
+  Code,
+  Heading1,
+  Heading2,
+  List,
+  ListOrdered,
+  Quote,
+  Minus,
+} from 'lucide-react'
 import * as Y from 'yjs'
 import { SupabaseProvider } from '@supabase-labs/y-supabase'
 import { supabase } from '@/lib/supabase'
@@ -32,10 +45,9 @@ const getColor = (str: string) => {
 }
 
 export function NotionEditor({ noteId, currentUser, content, onChange, disabled }: NotionEditorProps) {
-  const userTier = useAppStore((s) => s.userTier)
   const [provider, setProvider] = useState<SupabaseProvider | null>(null)
   const [providerError, setProviderError] = useState<string | null>(null)
-  
+
   // 1. Initialize a Yjs Document. One per note.
   const ydoc = useMemo(() => new Y.Doc(), [noteId])
 
@@ -54,7 +66,7 @@ export function NotionEditor({ noteId, currentUser, content, onChange, disabled 
       p.awareness.setLocalStateField('user', {
         name: currentUser.name || currentUser.email,
         color: userColor,
-        avatar: currentUser.avatar || null
+        avatar: currentUser.avatar || null,
       })
 
       setProvider(p)
@@ -66,7 +78,9 @@ export function NotionEditor({ noteId, currentUser, content, onChange, disabled 
     }
 
     return () => {
-      try { p?.destroy() } catch {}
+      try {
+        p?.destroy()
+      } catch {}
     }
   }, [noteId, currentUser, ydoc])
 
@@ -116,36 +130,15 @@ export function NotionEditor({ noteId, currentUser, content, onChange, disabled 
         .tiptap-editor code { background: #e5e7eb; color: #111827; padding: 0.125rem 0.25rem; border-radius: 0.25rem; font-size: 0.875em; }
         .dark .tiptap-editor code { background: #374151; color: #f9fafb; }
         .tiptap-editor pre code { background: transparent; color: inherit; padding: 0; }
-        .tiptap-editor mark { background-color: #fef08a; padding: 0.125rem 0; border-radius: 0.125rem; }
-        .dark .tiptap-editor mark { background-color: #854d0e; color: #f9fafb; }
       `}</style>
 
-      {/* Free Tier Banner */}
-      {userTier === 'free' && (
-        <div className="mb-4 p-3 bg-primary/10 border border-primary/20 rounded-xl flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-primary/20 text-primary flex items-center justify-center shrink-0">
-              <Sparkles className="w-4 h-4" />
-            </div>
-            <div>
-              <h3 className="font-semibold text-sm">Advanced Formatting Locked</h3>
-              <p className="text-xs text-muted-foreground">
-                Upgrade to Premium to unlock &apos;/&apos; commands, formatting bubbles, and advanced blocks.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
       {providerError ? (
-        // Fallback: show editor without collaboration if provider fails
         <EditorWithProvider
           ydoc={ydoc}
           provider={null}
           content={content}
           onChange={onChange}
           disabled={disabled}
-          userTier={userTier}
         />
       ) : provider ? (
         <EditorWithProvider
@@ -154,7 +147,6 @@ export function NotionEditor({ noteId, currentUser, content, onChange, disabled 
           content={content}
           onChange={onChange}
           disabled={disabled}
-          userTier={userTier}
         />
       ) : (
         <div className="w-full min-h-[60vh] rounded-xl border border-border/50 bg-card/50 flex items-center justify-center">
@@ -166,26 +158,28 @@ export function NotionEditor({ noteId, currentUser, content, onChange, disabled 
 }
 
 // Separate component to handle editor initialization cleanly with a ready provider
-function EditorWithProvider({ ydoc, provider, content, onChange, disabled, userTier }: any) {
+function EditorWithProvider({ ydoc, provider, content, onChange, disabled }: any) {
   const initialized = useRef(false)
 
   const extensions = [
     StarterKit,
     Markdown,
+    SlashCommand,
     Placeholder.configure({
-      placeholder: userTier !== 'free'
-        ? "Type '/' for Notion-Style slash commands...\nHighlight text to open the formatting bubble."
-        : 'Start writing...',
+      placeholder: 'Start writing… type "/" for commands or select text for formatting.',
     }),
     Collaboration.configure({
       document: ydoc,
     }),
-    // Only add collaboration cursor if provider is available
-    ...(provider ? [CollaborationCursor.configure({
-      provider: provider,
-      // @ts-ignore
-      user: provider.awareness?.getLocalState()?.user,
-    })] : []),
+    ...(provider
+      ? [
+          CollaborationCursor.configure({
+            provider: provider,
+            // @ts-ignore
+            user: provider.awareness?.getLocalState()?.user,
+          }),
+        ]
+      : []),
   ]
 
   const editor = useEditor({
@@ -201,7 +195,8 @@ function EditorWithProvider({ ydoc, provider, content, onChange, disabled, userT
     },
     editorProps: {
       attributes: {
-        class: 'prose prose-sm dark:prose-invert max-w-none focus:outline-none min-h-[60vh] p-6 text-sm leading-relaxed font-sans tiptap-editor',
+        class:
+          'prose prose-sm dark:prose-invert max-w-none focus:outline-none min-h-[60vh] p-6 text-sm leading-relaxed font-sans tiptap-editor',
       },
     },
   })
@@ -216,7 +211,6 @@ function EditorWithProvider({ ydoc, provider, content, onChange, disabled, userT
           editor.commands.setContent(content)
         }
       } catch (e) {
-        // Fallback: set content directly
         if (content) editor.commands.setContent(content)
       }
     }
@@ -230,8 +224,131 @@ function EditorWithProvider({ ydoc, provider, content, onChange, disabled, userT
   }, [disabled, editor])
 
   return (
-    <div className={`w-full min-h-[60vh] rounded-xl border border-border/50 bg-card/50 transition-all ${disabled ? 'opacity-50 pointer-events-none' : 'focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary/40'}`}>
+    <div
+      className={`w-full min-h-[60vh] rounded-xl border border-border/50 bg-card/50 transition-all ${
+        disabled
+          ? 'opacity-50 pointer-events-none'
+          : 'focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary/40'
+      }`}
+    >
+      {editor && !disabled && <FormattingBubble editor={editor} />}
       <EditorContent editor={editor} />
     </div>
+  )
+}
+
+/**
+ * Floating formatting menu shown when text is selected.
+ * Uses only commands guaranteed by StarterKit.
+ */
+function FormattingBubble({ editor }: { editor: any }) {
+  return (
+    <BubbleMenu
+      editor={editor}
+      updateDelay={100}
+      options={{ placement: 'top' }}
+      shouldShow={({ editor: e, from, to }: any) => from !== to && !e.isActive('codeBlock')}
+    >
+      <div className="flex items-center gap-0.5 rounded-lg border border-border bg-popover px-1 py-1 shadow-lg">
+        <ToolbarButton
+          label="Bold"
+          active={editor.isActive('bold')}
+          onClick={() => editor.chain().focus().toggleBold().run()}
+        >
+          <Bold className="w-4 h-4" />
+        </ToolbarButton>
+        <ToolbarButton
+          label="Italic"
+          active={editor.isActive('italic')}
+          onClick={() => editor.chain().focus().toggleItalic().run()}
+        >
+          <Italic className="w-4 h-4" />
+        </ToolbarButton>
+        <ToolbarButton
+          label="Strikethrough"
+          active={editor.isActive('strike')}
+          onClick={() => editor.chain().focus().toggleStrike().run()}
+        >
+          <Strikethrough className="w-4 h-4" />
+        </ToolbarButton>
+        <ToolbarButton
+          label="Inline code"
+          active={editor.isActive('code')}
+          onClick={() => editor.chain().focus().toggleCode().run()}
+        >
+          <Code className="w-4 h-4" />
+        </ToolbarButton>
+        <span className="mx-1 h-5 w-px bg-border" />
+        <ToolbarButton
+          label="Heading 1"
+          active={editor.isActive('heading', { level: 1 })}
+          onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
+        >
+          <Heading1 className="w-4 h-4" />
+        </ToolbarButton>
+        <ToolbarButton
+          label="Heading 2"
+          active={editor.isActive('heading', { level: 2 })}
+          onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
+        >
+          <Heading2 className="w-4 h-4" />
+        </ToolbarButton>
+        <span className="mx-1 h-5 w-px bg-border" />
+        <ToolbarButton
+          label="Bullet list"
+          active={editor.isActive('bulletList')}
+          onClick={() => editor.chain().focus().toggleBulletList().run()}
+        >
+          <List className="w-4 h-4" />
+        </ToolbarButton>
+        <ToolbarButton
+          label="Numbered list"
+          active={editor.isActive('orderedList')}
+          onClick={() => editor.chain().focus().toggleOrderedList().run()}
+        >
+          <ListOrdered className="w-4 h-4" />
+        </ToolbarButton>
+        <ToolbarButton
+          label="Quote"
+          active={editor.isActive('blockquote')}
+          onClick={() => editor.chain().focus().toggleBlockquote().run()}
+        >
+          <Quote className="w-4 h-4" />
+        </ToolbarButton>
+        <ToolbarButton
+          label="Horizontal rule"
+          onClick={() => editor.chain().focus().setHorizontalRule().run()}
+        >
+          <Minus className="w-4 h-4" />
+        </ToolbarButton>
+      </div>
+    </BubbleMenu>
+  )
+}
+
+function ToolbarButton({
+  children,
+  onClick,
+  active,
+  label,
+}: {
+  children: React.ReactNode
+  onClick: () => void
+  active?: boolean
+  label: string
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={onClick}
+      className={`flex h-7 w-7 items-center justify-center rounded-md transition-colors ${
+        active ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+      }`}
+    >
+      {children}
+    </button>
   )
 }

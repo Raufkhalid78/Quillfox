@@ -5,6 +5,10 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useAppStore, TodoItemChild } from '@/stores/app-store'
 import { encryptTodoTitle, decryptTodoTitle } from '@/lib/encrypted-api'
 import { logActivity } from '@/lib/activity'
+import { trashTodoList, restoreTodoList } from '@/lib/trash'
+import { saveReminder, deleteReminderForEntity } from '@/lib/reminders'
+import { updateRow } from '@/lib/offline-queue'
+import { canEditWorkspace } from '@/lib/roles'
 import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -58,6 +62,29 @@ export function TodoList() {
 
   const [isLockedByOther, setIsLockedByOther] = useState(false)
   const [lockedByInfo, setLockedByInfo] = useState<{name: string, email: string} | null>(null)
+  const [viewOnly, setViewOnly] = useState(false)
+
+  // Enforce workspace role: viewers (and non-members) are read-only.
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      if (!todoList?.workspaceId || !currentUser?.id) {
+        setViewOnly(false)
+        return
+      }
+      const { data } = await supabase
+        .from('workspace_members')
+        .select('role')
+        .eq('workspace_id', todoList.workspaceId)
+        .eq('user_id', currentUser.id)
+        .maybeSingle()
+      const isAuthor = todoList.authorId === currentUser.id
+      if (!cancelled) setViewOnly(!isAuthor && !canEditWorkspace(data?.role))
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [todoList?.workspaceId, todoList?.authorId, currentUser?.id])
 
   // Load todo list data & decrypt + subscribe to realtime updates
   useEffect(() => {
@@ -237,7 +264,7 @@ export function TodoList() {
   // Toggle item completion
   const handleToggle = useCallback(
     async (itemId: string) => {
-      if (isLockedByOther) return
+      if (isLockedByOther || viewOnly) return
       const targetItem = itemsRef.current.find(item => item.id === itemId)
       const isNowCompleted = targetItem ? !targetItem.completed : false
 
@@ -267,7 +294,7 @@ export function TodoList() {
 
   // Add new item
   const handleAddItem = async () => {
-    if (!newItemText.trim() || isLockedByOther || !selectedTodoListId) return
+    if (!newItemText.trim() || isLockedByOther || viewOnly || !selectedTodoListId) return
     const itemId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2)
     try {
       // Encrypt title before sending
@@ -405,17 +432,17 @@ export function TodoList() {
   const handleDelete = async () => {
     if (!selectedTodoListId) return
     try {
-      const { error } = await supabase
-        .from('todo_lists')
-        .delete()
-        .eq('id', selectedTodoListId)
-
-      if (error) {
-        toast.error('Failed to delete')
-        return
-      }
+      await trashTodoList(selectedTodoListId)
       removeTodoList(selectedTodoListId)
-      toast.success('Todo list deleted')
+      toast.success('Todo list moved to trash', {
+        action: {
+          label: 'Undo',
+          onClick: async () => {
+            await restoreTodoList(selectedTodoListId)
+            router.refresh()
+          },
+        },
+      })
       setDeleteConfirmOpen(false)
       router.push('/dashboard/todos')
     } catch {
@@ -538,7 +565,7 @@ export function TodoList() {
             onChange={handleTitleChange}
             className="flex-1 min-w-0 border-0 focus-visible:ring-0 text-base sm:text-lg font-semibold px-1 h-auto py-1 bg-transparent"
             placeholder="Untitled Todo List"
-            disabled={isLockedByOther}
+            disabled={isLockedByOther || viewOnly}
           />
 
           <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
@@ -548,10 +575,26 @@ export function TodoList() {
                 <Input
                   type="date"
                   value={todoList.dueDate || ''}
-                  onChange={(e) => {
+                  onChange={async (e) => {
                     const val = e.target.value
                     setTodoDueDate(todoList.id, val)
-                    supabase.from('todo_lists').update({ due_date: val || null }).eq('id', todoList.id)
+                    await updateRow('todo_lists', { due_date: val || null }, { column: 'id', value: todoList.id })
+                    const userId = useAppStore.getState().currentUser?.id
+                    try {
+                      if (val && userId) {
+                        await saveReminder({
+                          entityType: 'todo',
+                          entityId: todoList.id,
+                          workspaceId: todoList.workspaceId ?? null,
+                          remindAt: new Date(val),
+                          userId,
+                        })
+                      } else {
+                        await deleteReminderForEntity('todo', todoList.id)
+                      }
+                    } catch {
+                      // best-effort
+                    }
                   }}
                   className="h-8 text-xs border-0 bg-transparent w-[130px] pl-8 focus-visible:ring-0 focus-visible:ring-offset-0 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
                 />
@@ -674,6 +717,16 @@ export function TodoList() {
         </motion.div>
       )}
 
+      {/* Viewer banner */}
+      {viewOnly && !isLockedByOther && (
+        <div className="bg-muted/40 border-b border-border/50">
+          <div className="max-w-3xl mx-auto px-4 py-2 flex items-center gap-2 text-sm text-muted-foreground">
+            <Lock className="w-4 h-4" />
+            <span>View-only access — your workspace role does not allow editing.</span>
+          </div>
+        </div>
+      )}
+
       {/* Progress Bar */}
       <div className="max-w-3xl mx-auto w-full px-4 pt-6">
         <div className="flex items-center justify-between mb-2">
@@ -722,7 +775,7 @@ export function TodoList() {
                 <Checkbox
                   checked={item.completed}
                   onCheckedChange={() => handleToggle(item.id)}
-                  disabled={isLockedByOther}
+                  disabled={isLockedByOther || viewOnly}
                   className="shrink-0 data-[state=checked]:bg-[#6d28d9] data-[state=checked]:border-[#6d28d9]"
                 />
 

@@ -142,6 +142,7 @@ interface AppState {
   removeAttachmentFromNote: (noteId: string, attachmentId: string) => void
   setNoteDueDate: (id: string, dueDate?: string) => void
   setNoteFolder: (id: string, folderId?: string) => void
+  setNoteTags: (id: string, tags: string[]) => void
   addTodoList: (todoList: TodoItemData) => void
   updateTodoListTitle: (todoListId: string, title: string) => void
   removeTodoList: (todoListId: string) => void
@@ -284,6 +285,11 @@ export const useAppStore = create<AppState>()(
           notes: state.notes.map((n) => (n.id === id ? { ...n, folderId } : n)),
         })),
 
+      setNoteTags: (id, tags) =>
+        set((state) => ({
+          notes: state.notes.map((n) => (n.id === id ? { ...n, tags } : n)),
+        })),
+
       addTodoList: (todoList) =>
         set((state) => ({ todoLists: [todoList, ...state.todoLists] })),
 
@@ -360,6 +366,8 @@ export const useAppStore = create<AppState>()(
         vaultAutoLock: state.vaultAutoLock,
         vaultLockTimeout: state.vaultLockTimeout,
         vaultPasscodeHash: state.vaultPasscodeHash,
+        hidePreviews: state.hidePreviews,
+        migratedLegacyNoteCount: state.migratedLegacyNoteCount,
       }),
     }
   )

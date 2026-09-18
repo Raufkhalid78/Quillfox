@@ -31,6 +31,7 @@ import {
   Plus, Users, Loader2, UserPlus, Trash2, Pencil, FileText, CheckSquare, ArrowLeft
 } from 'lucide-react'
 import { useTheme } from 'next-themes'
+import { getPlanLimits, isAtLimit, formatLimit } from '@/lib/plans'
 
 const workspaceColors = [
   { name: 'emerald', value: '#059669' },
@@ -129,17 +130,10 @@ export function WorkspaceDetailView() {
   const handleInviteMember = async () => {
     if (!selectedWs || !inviteEmail.trim()) return
 
-    const membersCount = wsMembers.filter((m) => m.role === 'member').length
-    if (userTier === 'free' && membersCount >= 2) {
-      toast.error('Free tier is limited to 2 collaborators. Please upgrade to Premium or Ultra Premium!')
-      return
-    }
-    if (userTier === 'premium' && membersCount >= 20) {
-      toast.error('Premium tier is limited to 20 collaborators. Please upgrade to Ultra Premium!')
-      return
-    }
-    if (userTier === 'ultra' && membersCount >= 70) {
-      toast.error('Ultra Premium tier is limited to 70 collaborators.')
+    const membersCount = wsMembers.length
+    const limits = getPlanLimits(userTier)
+    if (isAtLimit(membersCount, limits.collaborators)) {
+      toast.error(`Your plan allows up to ${formatLimit(limits.collaborators)} collaborators per workspace. Please upgrade to add more.`)
       return
     }
 
@@ -263,6 +257,50 @@ export function WorkspaceDetailView() {
     }
   }
 
+  const handleRoleChange = async (memberId: string, role: string) => {
+    try {
+      const { error } = await supabase.from('workspace_members').update({ role }).eq('id', memberId)
+      if (error) throw error
+      setWsMembers(wsMembers.map((m) => (m.id === memberId ? { ...m, role } : m)))
+      toast.success('Role updated')
+    } catch {
+      toast.error('Failed to update role')
+    }
+  }
+
+  const handleTransferOwnership = async (memberId: string, memberName: string) => {
+    if (!selectedWs || !currentUser) return
+    const target = wsMembers.find((m) => m.id === memberId)
+    const me = wsMembers.find((m) => m.userId === currentUser.id)
+    if (!target || !me) return
+    if (!window.confirm(`Make ${memberName} the owner? You will become an admin.`)) return
+    try {
+      const { error: e1 } = await supabase
+        .from('workspaces')
+        .update({ owner_id: target.userId })
+        .eq('id', selectedWs.id)
+      if (e1) throw e1
+      const { error: e2 } = await supabase
+        .from('workspace_members')
+        .update({ role: 'owner' })
+        .eq('id', target.id)
+      if (e2) throw e2
+      const { error: e3 } = await supabase
+        .from('workspace_members')
+        .update({ role: 'admin' })
+        .eq('id', me.id)
+      if (e3) throw e3
+      setWsMembers(
+        wsMembers.map((m) =>
+          m.id === target.id ? { ...m, role: 'owner' } : m.id === me.id ? { ...m, role: 'admin' } : m
+        )
+      )
+      toast.success('Ownership transferred')
+    } catch {
+      toast.error('Failed to transfer ownership')
+    }
+  }
+
   const handleEditWorkspace = async () => {
     if (!selectedWs) return
     setIsSaving(true)
@@ -336,8 +374,9 @@ export function WorkspaceDetailView() {
     if (!currentUser || !selectedWs) return
 
     const ownedNotesCount = notes.filter((n) => n.authorId === currentUser.id && !n.isArchived).length
-    if (userTier === 'free' && ownedNotesCount >= 10) {
-      toast.error('Free tier is limited to 10 notes. Please upgrade to Premium or Ultra Premium!')
+    const limits = getPlanLimits(userTier)
+    if (isAtLimit(ownedNotesCount, limits.notes)) {
+      toast.error(`Your plan allows up to ${formatLimit(limits.notes)} notes. Please upgrade to add more.`)
       return
     }
 
@@ -398,8 +437,9 @@ export function WorkspaceDetailView() {
     if (!currentUser || !selectedWs) return
 
     const ownedTodoListsCount = todoLists.filter((t) => t.authorId === currentUser.id && !t.isArchived).length
-    if (userTier === 'free' && ownedTodoListsCount >= 3) {
-      toast.error('Free tier is limited to 3 todo lists. Please upgrade to Premium or Ultra Premium!')
+    const limits = getPlanLimits(userTier)
+    if (isAtLimit(ownedTodoListsCount, limits.todoLists)) {
+      toast.error(`Your plan allows up to ${formatLimit(limits.todoLists)} todo lists. Please upgrade to add more.`)
       return
     }
 
@@ -543,6 +583,9 @@ export function WorkspaceDetailView() {
                 <ManageMembersDialog 
                   wsMembers={wsMembers} 
                   onRemoveClick={(id, name) => setMemberToRemove({ id, name })} 
+                  onRoleChange={handleRoleChange}
+                  onTransferOwnership={handleTransferOwnership}
+                  canManage={selectedWs.ownerId === currentUser?.id}
                 />
                 
                 <MultiInviteDialog defaultWorkspaceId={selectedWs.id}>

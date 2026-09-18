@@ -1,12 +1,12 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import "@mdxeditor/editor/style.css";
 import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "sonner"
 
-import { SentryProvider } from "@/components/sentry-provider"
 import { AuthStateProvider } from "@/components/auth-state-provider"
+import { LocaleProvider } from "@/components/shared/locale-provider"
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -18,23 +18,54 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://www.quillfox.cc'
+
 export const metadata: Metadata = {
-  metadataBase: new URL('https://www.quillfox.cc'),
-  title: "QuillFox - Your Encrypted Workspace",
+  metadataBase: new URL(APP_URL),
+  title: {
+    default: "QuillFox - Your Encrypted Workspace",
+    template: "%s | QuillFox",
+  },
   description: "A comprehensive encrypted productivity workspace combining rich-text notetaking and structured to-do lists with end-to-end encryption.",
-  keywords: ["QuillFox", "productivity", "notes", "todo", "encryption", "workspace"],
+  keywords: ["QuillFox", "productivity", "notes", "todo", "encryption", "workspace", "end-to-end encrypted notes"],
   authors: [{ name: "QuillFox Team" }],
+  applicationName: "QuillFox",
   alternates: {
     canonical: '/',
   },
   icons: {
     icon: "/icon.svg",
   },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      'max-image-preview': 'large',
+    },
+  },
   openGraph: {
     title: "QuillFox - Your Encrypted Workspace",
     description: "End-to-end encrypted rich-text notes and structured todos.",
     type: "website",
+    url: APP_URL,
+    siteName: "QuillFox",
   },
+  twitter: {
+    card: "summary_large_image",
+    title: "QuillFox - Your Encrypted Workspace",
+    description: "End-to-end encrypted rich-text notes and structured todos.",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#0b0f14" },
+  ],
+  width: "device-width",
+  initialScale: 1,
 };
 
 import { headers } from 'next/headers'
@@ -51,19 +82,21 @@ export default async function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}
       >
-        <SentryProvider>
-          <ThemeProvider
-            attribute="class"
-            defaultTheme="system"
-            enableSystem
-            disableTransitionOnChange
-          >
-            <AuthStateProvider>
+        <a href="#main-content" className="skip-link">Skip to content</a>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
+          <AuthStateProvider>
+            <LocaleProvider />
+            <div id="main-content" tabIndex={-1}>
               {children}
-            </AuthStateProvider>
-            <Toaster position="bottom-right" theme="system" richColors />
-          </ThemeProvider>
-        </SentryProvider>
+            </div>
+          </AuthStateProvider>
+          <Toaster position="bottom-right" theme="system" richColors />
+        </ThemeProvider>
       </body>
     </html>
   );

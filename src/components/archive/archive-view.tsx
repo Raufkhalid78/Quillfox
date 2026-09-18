@@ -86,11 +86,13 @@ export function ArchiveView() {
         supabase
           .from('notes')
           .select('*')
-          .eq('is_archived', true),
+          .eq('is_archived', true)
+          .is('deleted_at', null),
         supabase
           .from('todo_lists')
           .select('*, todo_items(*)')
           .eq('is_archived', true)
+          .is('deleted_at', null)
       ])
 
       if (notesRes.error || todosRes.error) {
@@ -178,11 +180,13 @@ export function ArchiveView() {
         supabase
           .from('notes')
           .select('*')
-          .eq('is_archived', false),
+          .eq('is_archived', false)
+          .is('deleted_at', null),
         supabase
           .from('todo_lists')
           .select('*, todo_items(*)')
           .eq('is_archived', false)
+          .is('deleted_at', null)
       ])
 
       if (notesRes.data) {
