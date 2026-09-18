@@ -79,6 +79,7 @@ export function AppSidebar() {
               <TooltipTrigger asChild>
                 <Link
                   href={getHref(item.key)}
+                  prefetch={true}
                   aria-label={item.label}
                   aria-current={isActive(item.key) ? 'page' : undefined}
                   className={`w-10 h-10 rounded-xl transition-all duration-300 flex items-center justify-center ${
@@ -101,6 +102,7 @@ export function AppSidebar() {
               <TooltipTrigger asChild>
                 <Link
                   href="/dashboard/pricing"
+                  prefetch={true}
                   aria-label="Upgrade plan"
                   className={`w-10 h-10 rounded-xl transition-all duration-300 flex items-center justify-center ${
                     pathname === '/dashboard/pricing'

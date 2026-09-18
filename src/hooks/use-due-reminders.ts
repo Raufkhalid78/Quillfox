@@ -33,13 +33,7 @@ export function useDueReminders() {
     }
 
     const check = async () => {
-      if (Notification.permission === 'default') {
-        try {
-          await Notification.requestPermission()
-        } catch {
-          // ignore
-        }
-      }
+      if (typeof window === 'undefined' || !('Notification' in window)) return
       if (Notification.permission !== 'granted' || cancelled) return
 
       const notified = getNotified()

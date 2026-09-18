@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { supabase } from '@/lib/supabase'
+import { clearDecryptionCache } from '@/lib/encrypted-api'
 
 export interface User {
   id: string
@@ -220,8 +221,10 @@ export const useAppStore = create<AppState>()(
       setWorkspaceKeys: (keys) =>
         set({ workspaceKeys: keys }),
 
-      clearEncryption: () =>
-        set({ encryptionKey: null, encryptionSalt: null, isEncryptedSession: false, workspaceKeys: {} }),
+      clearEncryption: () => {
+        clearDecryptionCache()
+        set({ encryptionKey: null, encryptionSalt: null, isEncryptedSession: false, workspaceKeys: {} })
+      },
 
       setActiveCollaborators: (collaborators) =>
         set({ activeCollaborators: collaborators }),

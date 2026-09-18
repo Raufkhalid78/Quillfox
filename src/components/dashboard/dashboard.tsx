@@ -97,7 +97,10 @@ export function Dashboard() {
   const isEncryptedSession = useAppStore((s) => s.isEncryptedSession)
   const userTier = useAppStore((s) => s.userTier)
 
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(() => {
+    const s = useAppStore.getState()
+    return s.notes.length === 0 && s.todoLists.length === 0 && s.workspaces.length === 0
+  })
   const [selectedWs, setSelectedWs] = useState<WorkspaceData | null>(null)
   const [wsDetailOpen, setWsDetailOpen] = useState(false)
   const [wsMembers, setWsMembers] = useState<Array<{ id: string; userId: string; role: string; joinedAt: string; user: { id: string; name: string | null; email: string; image: string | null } }>>([])
@@ -116,7 +119,10 @@ export function Dashboard() {
 
   const fetchData = async () => {
     if (!currentUser) return
-    setIsLoading(true)
+    const s = useAppStore.getState()
+    if (s.notes.length === 0 && s.todoLists.length === 0 && s.workspaces.length === 0) {
+      setIsLoading(true)
+    }
     try {
       // 1. Fetch non-archived notes
       const { data: notesData, error: notesErr } = await supabase
@@ -320,8 +326,8 @@ export function Dashboard() {
         setDecryptedTodos(todoMap)
       }
     }
-    if (!isLoading) decryptData()
-  }, [notes, todoLists, isLoading])
+    decryptData()
+  }, [notes, todoLists])
 
   // Apply automation rules (e.g. auto-archive completed lists) after load.
   useEffect(() => {

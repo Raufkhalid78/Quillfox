@@ -1,7 +1,34 @@
 // Encrypted API wrapper functions
 // These functions wrap the fetch calls with encryption/decryption
 import { useAppStore } from '@/stores/app-store'
-import { encrypt, decrypt, isEncrypted } from './e2ee'
+import { encrypt, decrypt, isEncrypted, decryptWithStatus } from './e2ee'
+
+// In-memory cache for decrypted content to avoid expensive WebCrypto operations on every tab navigation
+const DECRYPTION_CACHE_MAX = 1000
+const decryptionCache = new Map<string, { content: string; usedLegacyFallback: boolean }>()
+
+export function clearDecryptionCache() {
+  decryptionCache.clear()
+}
+
+function getCachedOrDecrypt(
+  ciphertext: string,
+  decryptFn: () => Promise<{ content: string; usedLegacyFallback: boolean }>
+): Promise<{ content: string; usedLegacyFallback: boolean }> {
+  const cached = decryptionCache.get(ciphertext)
+  if (cached) {
+    return Promise.resolve(cached)
+  }
+
+  return decryptFn().then((result) => {
+    if (decryptionCache.size >= DECRYPTION_CACHE_MAX) {
+      const firstKey = decryptionCache.keys().next().value
+      if (firstKey) decryptionCache.delete(firstKey)
+    }
+    decryptionCache.set(ciphertext, result)
+    return result
+  })
+}
 
 // Helper to get current encryption key from store
 function getKey(workspaceId?: string | null): CryptoKey | null {
@@ -24,12 +51,14 @@ export async function decryptNoteContentWithStatus(content: string, workspaceId?
   const key = getKey(workspaceId)
   if (!key || !content) return { content, usedLegacyFallback: false }
   if (!isEncrypted(content)) return { content, usedLegacyFallback: false }
-  try {
-    const { decryptWithStatus } = await import('./e2ee')
-    return await decryptWithStatus(content, key)
-  } catch {
-    return { content, usedLegacyFallback: false }
-  }
+
+  return getCachedOrDecrypt(content, async () => {
+    try {
+      return await decryptWithStatus(content, key)
+    } catch {
+      return { content, usedLegacyFallback: false }
+    }
+  })
 }
 
 export async function decryptNoteContent(content: string, workspaceId?: string | null): Promise<string> {
@@ -47,12 +76,14 @@ export async function decryptNoteTitleWithStatus(title: string, workspaceId?: st
   const key = getKey(workspaceId)
   if (!key || !title) return { content: title, usedLegacyFallback: false }
   if (!isEncrypted(title)) return { content: title, usedLegacyFallback: false }
-  try {
-    const { decryptWithStatus } = await import('./e2ee')
-    return await decryptWithStatus(title, key)
-  } catch {
-    return { content: title, usedLegacyFallback: false }
-  }
+
+  return getCachedOrDecrypt(title, async () => {
+    try {
+      return await decryptWithStatus(title, key)
+    } catch {
+      return { content: title, usedLegacyFallback: false }
+    }
+  })
 }
 
 export async function decryptNoteTitle(title: string, workspaceId?: string | null): Promise<string> {
@@ -70,12 +101,14 @@ export async function decryptTodoTitleWithStatus(title: string, workspaceId?: st
   const key = getKey(workspaceId)
   if (!key || !title) return { content: title, usedLegacyFallback: false }
   if (!isEncrypted(title)) return { content: title, usedLegacyFallback: false }
-  try {
-    const { decryptWithStatus } = await import('./e2ee')
-    return await decryptWithStatus(title, key)
-  } catch {
-    return { content: title, usedLegacyFallback: false }
-  }
+
+  return getCachedOrDecrypt(title, async () => {
+    try {
+      return await decryptWithStatus(title, key)
+    } catch {
+      return { content: title, usedLegacyFallback: false }
+    }
+  })
 }
 
 export async function decryptTodoTitle(title: string, workspaceId?: string | null): Promise<string> {
@@ -93,8 +126,18 @@ export async function decryptWorkspaceTitle(title: string, workspaceId?: string 
   const key = getKey(workspaceId)
   if (!key || !title) return title
   if (!isEncrypted(title)) return title
+
+  const cached = decryptionCache.get(title)
+  if (cached) return cached.content
+
   try {
-    return await decrypt(title, key)
+    const res = await decrypt(title, key)
+    if (decryptionCache.size >= DECRYPTION_CACHE_MAX) {
+      const firstKey = decryptionCache.keys().next().value
+      if (firstKey) decryptionCache.delete(firstKey)
+    }
+    decryptionCache.set(title, { content: res, usedLegacyFallback: false })
+    return res
   } catch {
     return title
   }
@@ -111,8 +154,18 @@ export async function decryptWorkspaceDescription(desc: string | null, workspace
   const key = getKey(workspaceId)
   if (!key || !desc) return desc
   if (!isEncrypted(desc)) return desc
+
+  const cached = decryptionCache.get(desc)
+  if (cached) return cached.content
+
   try {
-    return await decrypt(desc, key)
+    const res = await decrypt(desc, key)
+    if (decryptionCache.size >= DECRYPTION_CACHE_MAX) {
+      const firstKey = decryptionCache.keys().next().value
+      if (firstKey) decryptionCache.delete(firstKey)
+    }
+    decryptionCache.set(desc, { content: res, usedLegacyFallback: false })
+    return res
   } catch {
     return desc
   }

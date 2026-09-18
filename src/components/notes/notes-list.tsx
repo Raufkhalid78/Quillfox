@@ -49,7 +49,7 @@ export function NotesList() {
   
   const router = useRouter()
 
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(() => useAppStore.getState().notes.length === 0)
   const [hasMore, setHasMore] = useState(false)
   const [isFetchingMore, setIsFetchingMore] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
@@ -85,7 +85,9 @@ export function NotesList() {
 
   const fetchData = async () => {
     if (!currentUser) return
-    setIsLoading(true)
+    if (useAppStore.getState().notes.length === 0) {
+      setIsLoading(true)
+    }
     try {
       const { data, error } = await supabase
         .from('notes')
@@ -206,9 +208,9 @@ export function NotesList() {
       }
     }
     
-    if (!isLoading) decryptData()
+    decryptData()
     return () => { isActive = false }
-  }, [notes, isLoading])
+  }, [notes])
 
   const handleCreate = async () => {
     if (!currentUser || isCreating) return

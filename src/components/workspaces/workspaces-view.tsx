@@ -54,7 +54,7 @@ export function WorkspacesView() {
   
   const router = useRouter()
 
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(() => useAppStore.getState().workspaces.length === 0)
   const [createOpen, setCreateOpen] = useState(false)
   const [newTitle, setNewTitle] = useState('')
   const [newDescription, setNewDescription] = useState('')
@@ -65,7 +65,9 @@ export function WorkspacesView() {
 
   const fetchData = async () => {
     if (!currentUser) return
-    setIsLoading(true)
+    if (useAppStore.getState().workspaces.length === 0) {
+      setIsLoading(true)
+    }
     try {
       // Fetch workspaces where owner_id = currentUser.id
       const { data: owned, error: ownedErr } = await supabase

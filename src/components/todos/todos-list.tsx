@@ -43,7 +43,7 @@ export function TodosList() {
 
   const router = useRouter()
 
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(() => useAppStore.getState().todoLists.length === 0)
   const [createOpen, setCreateOpen] = useState(false)
   const [newTitle, setNewTitle] = useState('')
   const [newWorkspace, setNewWorkspace] = useState<string>('')
@@ -75,7 +75,9 @@ export function TodosList() {
 
   const fetchData = async () => {
     if (!currentUser) return
-    setIsLoading(true)
+    if (useAppStore.getState().todoLists.length === 0) {
+      setIsLoading(true)
+    }
     try {
       const { data, error } = await supabase
         .from('todo_lists')
@@ -137,8 +139,8 @@ export function TodosList() {
       )
       setDecryptedTodos(todoMap)
     }
-    if (!isLoading) decryptData()
-  }, [todoLists, isLoading])
+    decryptData()
+  }, [todoLists])
 
   useEffect(() => {
     setPage(1)

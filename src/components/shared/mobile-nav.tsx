@@ -102,6 +102,7 @@ export function MobileNav() {
               <Link
                 key={item.key}
                 href={getHref(item.key)}
+                prefetch={true}
                 onClick={() => setOpen(false)}
                 className={`flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-colors w-full ${
                   isActive(item.key)
@@ -118,6 +119,7 @@ export function MobileNav() {
             {userTier === 'free' && (
               <Link
                 href="/dashboard/pricing"
+                prefetch={true}
                 onClick={() => setOpen(false)}
                 className={`flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-colors w-full ${
                   pathname === '/dashboard/pricing'

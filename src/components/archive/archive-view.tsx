@@ -80,7 +80,9 @@ export function ArchiveView() {
 
   const fetchArchivedData = useCallback(async () => {
     if (!currentUser) return
-    setIsLoading(true)
+    if (archivedNotes.length === 0 && archivedTodos.length === 0) {
+      setIsLoading(true)
+    }
     try {
       const [notesRes, todosRes] = await Promise.all([
         supabase
