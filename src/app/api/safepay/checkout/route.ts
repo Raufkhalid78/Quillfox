@@ -62,6 +62,8 @@ export async function POST(req: Request) {
       mode: 'payment',
       currency: 'PKR',
       amount: amount * 100, // lowest denomination (paisa)
+      // Carried back in the webhook so we can identify the user and tier.
+      metadata: { reference: userId, tier },
     })
 
     const trackerToken = sessionResponse.data.token
