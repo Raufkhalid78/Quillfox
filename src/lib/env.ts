@@ -46,11 +46,19 @@ export function getSupabaseAdminConfig() {
 
 /** Safepay payment provider config. */
 export function getSafepayConfig() {
-  // Never fall back to a dummy key — a missing key must hard fail.
-  const apiKey = required('SAFEPAY_API_KEY', process.env.SAFEPAY_API_KEY)
-  const isProd = isProduction
+  // Safepay issues TWO keys per account (Dashboard → Developers → API):
+  //  - the public API key, sent as `merchant_api_key` when creating a session;
+  //  - the secret key, used to authenticate the server SDK (authType: 'secret').
+  const publicApiKey = required('SAFEPAY_API_KEY', process.env.SAFEPAY_API_KEY)
+  const secretKey = required('SAFEPAY_V1_SECRET', process.env.SAFEPAY_V1_SECRET)
+
+  // Explicit SAFEPAY_ENVIRONMENT wins; otherwise derive from NODE_ENV.
+  const explicit = process.env.SAFEPAY_ENVIRONMENT?.trim().toLowerCase()
+  const isProd = explicit === 'production' || (explicit !== 'sandbox' && isProduction)
+
   return {
-    apiKey,
+    publicApiKey,
+    secretKey,
     environment: (isProd ? 'production' : 'sandbox') as 'production' | 'sandbox',
     host: isProd ? 'https://api.getsafepay.com' : 'https://sandbox.api.getsafepay.com',
     webhookSecret: required('SAFEPAY_WEBHOOK_SECRET', process.env.SAFEPAY_WEBHOOK_SECRET),

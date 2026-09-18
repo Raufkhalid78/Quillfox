@@ -16,7 +16,7 @@ const checkoutSchema = z.object({
 export async function POST(req: Request) {
   try {
     const { url: supabaseUrl, serviceRoleKey } = getSupabaseAdminConfig()
-    const { apiKey, environment, host } = getSafepayConfig()
+    const { publicApiKey, secretKey, environment, host } = getSafepayConfig()
 
     const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey)
 
@@ -47,7 +47,9 @@ export async function POST(req: Request) {
     const amount = TIER_AMOUNTS[tier]
     const userId = user.id
 
-    const safepay = new Safepay(apiKey, { authType: 'secret', host })
+    // The SDK authenticates with the secret key; the session is created with
+    // the public API key.
+    const safepay = new Safepay(secretKey, { authType: 'secret', host })
 
     const appUrl = getAppUrl()
     const cancelUrl = `${appUrl}/dashboard/pricing?canceled=true`
@@ -55,7 +57,7 @@ export async function POST(req: Request) {
 
     // 1. Create a payment session (Tracker)
     const sessionResponse = await safepay.payments.session.setup({
-      merchant_api_key: apiKey,
+      merchant_api_key: publicApiKey,
       intent: 'CYBERSOURCE',
       mode: 'payment',
       currency: 'PKR',
