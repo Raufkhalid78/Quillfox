@@ -56,29 +56,41 @@ export async function POST(req: Request) {
     const redirectUrl = `${appUrl}/dashboard/pricing?success=true`
 
     // 1. Create a payment session (Tracker)
+    // Safepay only accepts specific metadata keys (`order_id`, `source`), so the
+    // tier and user id are encoded into `order_id` as `tier:userId` and read
+    // back by the webhook.
     const sessionResponse = await safepay.payments.session.setup({
       merchant_api_key: publicApiKey,
       intent: 'CYBERSOURCE',
       mode: 'payment',
       currency: 'PKR',
       amount: amount * 100, // lowest denomination (paisa)
-      // Carried back in the webhook so we can identify the user and tier.
-      metadata: { reference: userId, tier },
+      metadata: { order_id: `${tier}:${userId}`, source: 'quillfox' },
     })
 
-    const trackerToken = sessionResponse.data.token
+    const trackerToken =
+      sessionResponse?.data?.tracker?.token ?? sessionResponse?.data?.token
+    if (!trackerToken) {
+      throw new Error('Safepay did not return a tracker token')
+    }
 
-    // 2. Create an authentication token (Passport)
+    // 2. Create an authentication token (Passport). The token is returned as a
+    // plain string in `data`.
     const passportResponse = await safepay.client.passport.create()
-    const tbtToken = passportResponse.data.token
+    const tbtToken =
+      typeof passportResponse?.data === 'string'
+        ? passportResponse.data
+        : passportResponse?.data?.token
+    if (!tbtToken) {
+      throw new Error('Safepay did not return an authentication token')
+    }
 
-    // 3. Generate the Checkout URL, binding the user id as the reference.
+    // 3. Generate the Checkout URL.
     const checkoutUrl = safepay.checkout.createCheckoutUrl({
       env: environment,
       tracker: trackerToken,
       tbt: tbtToken,
       source: 'hosted',
-      user_id: userId,
       cancel_url: cancelUrl,
       redirect_url: redirectUrl,
     })

@@ -60,11 +60,23 @@ export async function POST(req: Request) {
     const data = (event.data || {}) as Record<string, unknown>
     const metadata = (data.metadata || {}) as Record<string, unknown>
 
-    // Payment succeeded → grant the tier. The tier and the user reference are
-    // attached to the payment session's metadata at checkout time.
+    // Payment succeeded → grant the tier. Checkout encodes `tier:userId` into
+    // the only supported metadata key, `order_id`.
     if (event.type === 'payment.succeeded' || event.type === 'subscription.payment.succeeded') {
-      const userId = (metadata.reference || data.reference) as string | undefined
-      const metaTier = metadata.tier as string | undefined
+      const orderId = metadata.order_id as string | undefined
+      let userId = (metadata.reference || data.reference) as string | undefined
+      let metaTier = metadata.tier as string | undefined
+
+      if (orderId) {
+        const [maybeTier, ...rest] = orderId.split(':')
+        if ((maybeTier === 'premium' || maybeTier === 'ultra') && rest.length > 0) {
+          metaTier = maybeTier
+          userId = rest.join(':')
+        } else {
+          userId = orderId
+        }
+      }
+
       const planId = (data.plan_id || data.planId) as string | undefined
 
       let newTier: 'premium' | 'ultra' | null = null
