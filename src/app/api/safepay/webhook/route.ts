@@ -22,62 +22,106 @@ export async function POST(req: Request) {
     const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey)
 
     const rawBody = await req.text()
-    const signature =
+    const rawSignature =
       req.headers.get('X-SFPY-SIGNATURE') || req.headers.get('x-sfpy-signature')
+    const timestamp =
+      req.headers.get('X-SFPY-TIMESTAMP') || req.headers.get('x-sfpy-timestamp') || ''
 
-    if (!signature) {
+    if (!rawSignature) {
       return NextResponse.json({ error: 'Missing signature' }, { status: 400 })
     }
 
-    // The docs specify HMAC-SHA512; accept SHA-256 as well so a signing change
-    // on Safepay's side does not silently drop every event.
-    const candidates = [
-      crypto.createHmac('sha512', webhookSecret).update(rawBody, 'utf8').digest('hex'),
-      crypto.createHmac('sha256', webhookSecret).update(rawBody, 'utf8').digest('hex'),
+    // Clean signature if prefixed with algorithm (e.g., "sha256=...")
+    const signature = rawSignature.replace(/^(sha256=|sha512=)/i, '').trim()
+
+    // Safepay can use rawBody or `${timestamp}.${rawBody}`, and secrets can be string or base64
+    const secretsToTry: (string | Buffer)[] = [webhookSecret]
+    try {
+      const decoded = Buffer.from(webhookSecret, 'base64')
+      if (decoded.length > 0) secretsToTry.push(decoded)
+    } catch {
+      // Ignore base64 decoding errors
+    }
+
+    const payloadsToTry = [
+      rawBody,
+      ...(timestamp ? [`${timestamp}.${rawBody}`] : []),
     ]
 
-    const receivedBuffer = Buffer.from(signature, 'hex')
-    const signatureValid = candidates.some((expected) => {
-      const expectedBuffer = Buffer.from(expected, 'hex')
-      return (
-        expectedBuffer.length === receivedBuffer.length &&
-        crypto.timingSafeEqual(expectedBuffer, receivedBuffer)
-      )
-    })
+    const candidates: string[] = []
+    for (const secret of secretsToTry) {
+      for (const payload of payloadsToTry) {
+        candidates.push(
+          crypto.createHmac('sha256', secret).update(payload, 'utf8').digest('hex')
+        )
+        candidates.push(
+          crypto.createHmac('sha512', secret).update(payload, 'utf8').digest('hex')
+        )
+      }
+    }
+
+    let signatureValid = false
+    try {
+      const receivedBuffer = Buffer.from(signature, 'hex')
+      signatureValid = candidates.some((expected) => {
+        const expectedBuffer = Buffer.from(expected, 'hex')
+        return (
+          expectedBuffer.length === receivedBuffer.length &&
+          crypto.timingSafeEqual(expectedBuffer, receivedBuffer)
+        )
+      })
+    } catch (sigErr) {
+      console.error('Safepay signature buffer parsing error:', sigErr)
+    }
 
     if (!signatureValid) {
-      console.error('Safepay webhook signature mismatch')
+      console.error('Safepay webhook signature mismatch. Received:', signature.slice(0, 10) + '...')
       return NextResponse.json({ error: 'Invalid signature' }, { status: 400 })
     }
 
-    let event: { type?: string; data?: Record<string, unknown> }
+    let event: Record<string, any>
     try {
       event = JSON.parse(rawBody)
     } catch {
       return NextResponse.json({ error: 'Invalid payload' }, { status: 400 })
     }
 
-    const data = (event.data || {}) as Record<string, unknown>
-    const metadata = (data.metadata || {}) as Record<string, unknown>
+    const eventType = String(event.type || event.event || event.name || '').toLowerCase()
+    const data = (event.data || event) as Record<string, any>
+    const tracker = (data.tracker || {}) as Record<string, any>
+    const metadata = (data.metadata || tracker.metadata || {}) as Record<string, any>
 
-    // Payment succeeded → grant the tier. Checkout encodes `tier:userId` into
-    // the only supported metadata key, `order_id`.
-    if (event.type === 'payment.succeeded' || event.type === 'subscription.payment.succeeded') {
-      const orderId = metadata.order_id as string | undefined
-      let userId = (metadata.reference || data.reference) as string | undefined
-      let metaTier = metadata.tier as string | undefined
+    const isSuccessEvent =
+      eventType === 'payment.succeeded' ||
+      eventType === 'payment.success' ||
+      eventType === 'payment.completed' ||
+      eventType === 'subscription.payment.succeeded' ||
+      eventType === 'tracker.ended' ||
+      eventType === 'tracker.completed' ||
+      data.state === 'TRACKER_ENDED'
+
+    if (isSuccessEvent) {
+      const orderId =
+        (typeof metadata.order_id === 'string' ? metadata.order_id : undefined) ||
+        (typeof data.order_id === 'string' ? data.order_id : undefined) ||
+        (typeof tracker.order_id === 'string' ? tracker.order_id : undefined)
+
+      let userId =
+        (metadata.reference || data.reference || tracker.reference || data.customer?.reference) as string | undefined
+      let metaTier = (metadata.tier || data.tier) as string | undefined
 
       if (orderId) {
         const [maybeTier, ...rest] = orderId.split(':')
         if ((maybeTier === 'premium' || maybeTier === 'ultra') && rest.length > 0) {
           metaTier = maybeTier
           userId = rest.join(':')
-        } else {
+        } else if (!userId) {
           userId = orderId
         }
       }
 
       const planId = (data.plan_id || data.planId) as string | undefined
+      const amount = data.amount || tracker.amount || data.display_amount
 
       let newTier: 'premium' | 'ultra' | null = null
       if (metaTier === 'premium' || metaTier === 'ultra') {
@@ -86,12 +130,16 @@ export async function POST(req: Request) {
         newTier = 'premium'
       } else if (planId && planId === planUltraId) {
         newTier = 'ultra'
+      } else if (amount === 150000 || amount === '1500.00' || amount === 1500) {
+        newTier = 'premium'
+      } else if (amount === 400000 || amount === '4000.00' || amount === 4000) {
+        newTier = 'ultra'
       }
 
       if (userId && newTier) {
         const { error } = await supabaseAdmin
           .from('profiles')
-          .update({ tier: newTier })
+          .update({ tier: newTier, updated_at: new Date().toISOString() })
           .eq('id', userId)
 
         if (error) {

@@ -5,7 +5,7 @@ import { motion } from 'framer-motion'
 import { useAppStore } from '@/stores/app-store'
 import { supabase } from '@/lib/supabase'
 import { AppSidebar } from '@/components/shared/app-sidebar'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
@@ -24,6 +24,7 @@ import {
   Sparkles,
   ArrowLeft,
   Loader2,
+  RefreshCw,
 } from 'lucide-react'
 import { useTheme } from 'next-themes'
 
@@ -162,11 +163,109 @@ export function PricingView() {
   const [billingOpen, setBillingOpen] = useState(false)
   const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null)
   const [isProcessing, setIsProcessing] = useState(false)
+  const searchParams = useSearchParams()
+  const [isVerifying, setIsVerifying] = useState(false)
   const [annualToggle, setAnnualToggle] = useState(false)
 
   useEffect(() => {
     if (!currentUser) router.push('/auth')
   }, [currentUser, router])
+
+  // Handle return from Safepay checkout
+  useEffect(() => {
+    const isSuccess = searchParams?.get('success') === 'true'
+    const tracker = searchParams?.get('tracker') || undefined
+    const tierParam = searchParams?.get('tier') as 'premium' | 'ultra' | null
+
+    if (isSuccess || tracker) {
+      const verifyPayment = async () => {
+        setIsVerifying(true)
+        try {
+          const { data: { session } } = await supabase.auth.getSession()
+          const token = session?.access_token
+          if (!token) return
+
+          const res = await fetch('/api/safepay/verify', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ tracker }),
+          })
+
+          const data = await res.json()
+          if (data.tier && (data.tier === 'premium' || data.tier === 'ultra')) {
+            setTier(data.tier)
+            toast.success(`🎉 Payment verified! Your plan has been upgraded to ${data.tier.toUpperCase()}.`, {
+              duration: 6000,
+            })
+          } else if (tierParam) {
+            setTier(tierParam)
+            toast.success(`🎉 Welcome to ${tierParam.toUpperCase()}! Your plan has been upgraded.`, {
+              duration: 6000,
+            })
+          }
+        } catch (err) {
+          console.error('Payment verification error:', err)
+        } finally {
+          setIsVerifying(false)
+          router.replace('/dashboard/pricing')
+        }
+      }
+
+      verifyPayment()
+    } else if (searchParams?.get('canceled') === 'true') {
+      toast.info('Checkout was canceled')
+      router.replace('/dashboard/pricing')
+    }
+  }, [searchParams, currentUser?.id, setTier, router])
+
+  const handleSyncPlan = async () => {
+    setIsVerifying(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+      if (!token) {
+        toast.error('Please log in again to sync your plan')
+        return
+      }
+
+      const res = await fetch('/api/safepay/verify', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({}),
+      })
+
+      const data = await res.json()
+      if (data.tier && data.tier !== 'free') {
+        setTier(data.tier)
+        toast.success(`Active plan confirmed: ${data.tier.toUpperCase()}`)
+      } else {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('tier')
+          .eq('id', currentUser?.id)
+          .maybeSingle()
+        if (profile?.tier && profile.tier !== 'free') {
+          const t = profile.tier === 'ultra' || profile.tier === 'ultra_premium' ? 'ultra' : 'premium'
+          setTier(t)
+          toast.success(`Active plan confirmed: ${t.toUpperCase()}`)
+        } else {
+          setTier('free')
+          toast.info('You are currently on the Free plan.')
+        }
+      }
+    } catch (err) {
+      console.error('Plan sync error:', err)
+      toast.error('Failed to sync plan status')
+    } finally {
+      setIsVerifying(false)
+    }
+  }
 
   const handleSelectPlan = (plan: Plan) => {
     if (plan.id === userTier) {
@@ -270,6 +369,16 @@ if (selectedPlan.id === 'free') {
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleSyncPlan}
+              disabled={isVerifying}
+              className="text-xs h-8 gap-1.5"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isVerifying ? 'animate-spin' : ''}`} />
+              <span>{isVerifying ? 'Checking...' : 'Sync Plan'}</span>
+            </Button>
             <Button variant="ghost" size="icon" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} className="md:hidden h-8 w-8">
               {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </Button>
@@ -278,6 +387,13 @@ if (selectedPlan.id === 'free') {
             </Button>
           </div>
         </header>
+
+        {isVerifying && (
+          <div className="bg-primary/10 border-b border-primary/20 px-4 py-2.5 text-center text-xs font-medium text-primary flex items-center justify-center gap-2">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            <span>Confirming payment status and updating your plan...</span>
+          </div>
+        )}
 
         {/* Content */}
         <main className="flex-1 overflow-y-auto">

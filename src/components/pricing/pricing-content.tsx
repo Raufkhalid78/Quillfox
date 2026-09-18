@@ -68,7 +68,7 @@ export function PricingContent() {
               <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-400" /> Extra collaborator seats available</li>
               <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-400" /> Unlimited notes &amp; todo lists</li>
             </ul>
-            <Button onClick={() => router.push('/dashboard')} className="w-full rounded-full bg-emerald-500 hover:bg-emerald-400 text-black font-bold">Start Free Trial</Button>
+            <Button onClick={() => router.push('/dashboard/pricing')} className="w-full rounded-full bg-emerald-500 hover:bg-emerald-400 text-black font-bold">Upgrade to Premium</Button>
           </motion.div>
 
           {/* Ultra */}
@@ -88,7 +88,7 @@ export function PricingContent() {
               <li className="flex items-center gap-2"><Check className="w-4 h-4 text-violet-400" /> Priority support</li>
               <li className="flex items-center gap-2"><Check className="w-4 h-4 text-violet-400" /> Early access to new features</li>
             </ul>
-            <Button variant="outline" onClick={() => router.push('/dashboard')} className="w-full rounded-full border-violet-500/30 hover:bg-violet-500/10 text-violet-300">Upgrade to Ultra</Button>
+            <Button variant="outline" onClick={() => router.push('/dashboard/pricing')} className="w-full rounded-full border-violet-500/30 hover:bg-violet-500/10 text-violet-300">Upgrade to Ultra</Button>
           </motion.div>
 
         </div>

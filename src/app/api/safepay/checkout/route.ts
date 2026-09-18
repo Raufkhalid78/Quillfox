@@ -53,7 +53,7 @@ export async function POST(req: Request) {
 
     const appUrl = getAppUrl()
     const cancelUrl = `${appUrl}/dashboard/pricing?canceled=true`
-    const redirectUrl = `${appUrl}/dashboard/pricing?success=true`
+    const redirectUrl = `${appUrl}/dashboard/pricing?success=true&tier=${tier}`
 
     // 1. Create a payment session (Tracker)
     // Safepay only accepts specific metadata keys (`order_id`, `source`), so the
@@ -91,6 +91,7 @@ export async function POST(req: Request) {
       tracker: trackerToken,
       tbt: tbtToken,
       source: 'hosted',
+      order_id: `${tier}:${userId}`,
       cancel_url: cancelUrl,
       redirect_url: redirectUrl,
     })
